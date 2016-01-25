@@ -69,6 +69,8 @@ public class Main {
 		if (sql_password == null || sql_password == "" )
 			sql_password = "";
 		
+		
+		// get Properties from file
 		Properties prop = new Properties();
 		InputStream input = null;
 
@@ -145,7 +147,9 @@ public class Main {
 				
 							
 				// Heartbeats
+				
 				from("timer://foo?period={{heartbeatsdelay}}")
+				//.choice()
 		        .process(new Processor() {
 					public void process(Exchange exchange) throws Exception {
 						ZabbixAPIConsumer.genHeartbeatMessage(exchange);
@@ -198,7 +202,7 @@ public class Main {
 						.endChoice()
 					.end()
 					
-		    		.log("${id} ${header.DeviceId} ${header.DeviceType} ");
+		    		.log(LoggingLevel.DEBUG, "Sended message: ${id} ");
 		    		//.to("activemq:{{devicesqueue}}");
 				
 				
