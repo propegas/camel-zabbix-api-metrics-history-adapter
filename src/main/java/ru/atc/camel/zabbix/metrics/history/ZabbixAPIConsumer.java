@@ -27,7 +27,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
 import org.apache.commons.dbcp.BasicDataSource;
-import org.apache.commons.lang.ArrayUtils;
+//import org.apache.commons.lang.ArrayUtils;
 //import org.apache.http.HttpVersion;
 import org.apache.http.client.ClientProtocolException;
 //import org.apache.http.client.CookieStore;
@@ -50,8 +50,8 @@ import com.alibaba.fastjson.JSONObject;
 import io.github.hengyunabc.zabbix.api.DefaultZabbixApi;
 import io.github.hengyunabc.zabbix.api.Request;
 import io.github.hengyunabc.zabbix.api.RequestBuilder;
-import net.sf.ehcache.search.expression.And;
-import ru.at_consulting.itsm.device.Device;
+//import net.sf.ehcache.search.expression.And;
+//import ru.at_consulting.itsm.device.Device;
 import ru.at_consulting.itsm.event.Event;
 //import scala.xml.dtd.ParameterEntityDecl;
 
@@ -301,6 +301,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			Map<String, Object> answer = new HashMap<String, Object>();
 		    //answer.put("timestamp", (long) Integer.parseInt(lastpolltime));
 			answer.put("timestamp", lastclockfinal);
+			answer.put("source", endpoint.getConfiguration().getZabbixapiurl());
 			
 			Exchange exchange = getEndpoint().createExchange();
 			exchange.getIn().setHeader("queueName", "UpdateLastPoll");
@@ -439,14 +440,19 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	    	
 	    	con = (Connection) ds.getConnection();
 	    	
-			pstmt = con.prepareStatement("select cast(extract(epoch from lastclock) as integer) as lastclock from metrics_lastpoll");
+			pstmt = con.prepareStatement("select cast(extract(epoch from lastclock) as integer) as lastclock "
+					+ "from metrics_lastpoll "
+					+ "where source = ?");
+	                   // +" LIMIT ?;");
+	        //pstmt.setString(1, "");
+	        pstmt.setString(1, endpoint.getConfiguration().getZabbixapiurl());
 						
 			logger.debug("DB query: " +  pstmt.toString()); 
 			resultset = pstmt.executeQuery();
 			resultset.next();
 			
 			lastclock = resultset.getInt("lastclock");
-			logger.debug("Get last clock from DB: " +  lastclock); 
+			logger.info("Received saved last clock from DB: " +  lastclock); 
 			
 			resultset.close();
 	        pstmt.close();
@@ -501,11 +507,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		JSONArray items;
 		try {
 			getResponse = zabbixApi.call(getRequest);
-			System.err.println(getRequest);
-			logger.info("****** Finded Zabbix getRequest: " + getRequest);
+			//System.err.println(getRequest);
+			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
 
 			items = getResponse.getJSONArray("result");
-			logger.info("****** Finded Zabbix getResponse: " + getResponse);
+			logger.debug("****** Finded Zabbix getResponse: " + getResponse);
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -546,7 +552,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 					//.paramEntry("time_till", time_till)
 					.paramEntry("sortfield", "clock")
 					.paramEntry("sortorder", "DESC")
-					.paramEntry("limit", 5000)
+					.paramEntry("limit", 20000)
 					.build();
 
 		} catch (Exception ex) {
@@ -556,11 +562,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		JSONArray history;
 		try {
 			getResponse = zabbixApi.call(getRequest);
-			System.err.println(getRequest);
-			logger.info("****** Finded Zabbix getRequest: " + getRequest);
+			//System.err.println(getRequest);
+			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
 
 			history = getResponse.getJSONArray("result");
-			logger.info("****** Finded Zabbix getResponse: " + getResponse);
+			logger.debug("****** Finded Zabbix getResponse: " + getResponse);
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -574,7 +580,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		
 		//List<Device> listFinal = new ArrayList<Device>();
 		
-		logger.info("Finded Zabbix History Items: " + history.size());
+		logger.info("Finded Zabbix History records: " + history.size());
 
 		for (int i = 0; i < history.size(); i++) {
 
@@ -594,7 +600,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			4 - text. 
 			 */
 			switch (historytype) {
-        	case 3:  value = (long)Integer.parseInt(rowvalue);break;
+        	case 3:  value = (long)Long.parseLong(rowvalue);break;
         	case 0:  value = (float)Float.parseFloat(rowvalue);break;
         	
         	default:  value = (String)rowvalue;break;
@@ -640,11 +646,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		JSONArray items;
 		try {
 			getResponse = zabbixApi.call(getRequest);
-			System.err.println(getRequest);
-			logger.info("****** Finded Zabbix getRequest: " + getRequest);
+			//System.err.println(getRequest);
+			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
 
 			items = getResponse.getJSONArray("result");
-			logger.info("****** Finded Zabbix getResponse: " + getResponse);
+			logger.debug("****** Finded Zabbix getResponse: " + getResponse);
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -689,11 +695,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		JSONArray items;
 		try {
 			getResponse = zabbixApi.call(getRequest);
-			System.err.println(getRequest);
-			logger.info("****** Finded Zabbix getRequest: " + getRequest);
+			//System.err.println(getRequest);
+			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
 
 			items = getResponse.getJSONArray("result");
-			logger.info("****** Finded Zabbix getResponse: " + getResponse);
+			logger.debug("****** Finded Zabbix getResponse: " + getResponse);
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block

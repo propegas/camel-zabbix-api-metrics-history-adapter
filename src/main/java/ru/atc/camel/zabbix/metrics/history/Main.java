@@ -8,10 +8,10 @@ import java.util.Properties;
 //import java.io.File;
 import javax.jms.ConnectionFactory;
 
-import javax.sql.DataSource;
+//import javax.sql.DataSource;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
-import org.apache.camel.CamelContext;
+//import org.apache.camel.CamelContext;
 //import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
@@ -22,12 +22,12 @@ import org.apache.camel.component.properties.PropertiesComponent;
 import org.apache.camel.component.sql.SqlComponent;
 import org.apache.camel.model.dataformat.JsonDataFormat;
 import org.apache.camel.model.dataformat.JsonLibrary;
-import org.apache.camel.spring.SpringCamelContext;
+//import org.apache.camel.spring.SpringCamelContext;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.support.ClassPathXmlApplicationContext;
+//import org.springframework.context.ApplicationContext;
+//import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 //import ru.at_consulting.itsm.device.Device;
 //import org.apache.camel.processor.idempotent.FileIdempotentRepository;
@@ -42,11 +42,12 @@ public class Main {
 	public static String sql_database = null;
 	public static String sql_user = null;
 	public static String sql_password = null;
+	public static String usejms = null;
 	public static void main(String[] args) throws Exception {
 		
 		logger.info("Starting Custom Apache Camel component example");
 		logger.info("Press CTRL+C to terminate the JVM");
-			
+		/*	
 		if ( args.length == 6  ) {
 			activemq_port = (String)args[1];
 			activemq_ip = (String)args[0];
@@ -55,7 +56,7 @@ public class Main {
 			sql_user = (String)args[4];
 			sql_password = (String)args[5];
 		}
-		
+		*/
 		if (activemq_port == null || activemq_port == "" )
 			activemq_port = "61616";
 		if (activemq_ip == null || activemq_ip == "" )
@@ -91,6 +92,9 @@ public class Main {
 			sql_database = prop.getProperty("sql_database");
 			sql_user = prop.getProperty("sql_user");
 			sql_password = prop.getProperty("sql_password");
+			usejms = prop.getProperty("usejms");
+			activemq_ip = prop.getProperty("activemq_ip");
+			activemq_port = prop.getProperty("activemq_port");
 
 		} catch (IOException ex) {
 			ex.printStackTrace();
@@ -105,8 +109,20 @@ public class Main {
 		}
 		
 		//System.exit(0);
-
 		
+		if (activemq_port == null || activemq_port == "" )
+			activemq_port = "61616";
+		if (activemq_ip == null || activemq_ip == "" )
+			activemq_ip = "172.20.19.195";
+		if (sql_ip == null || sql_ip == "" )
+			sql_ip = "192.168.157.73";
+		if (sql_database == null || sql_database == "" )
+			sql_database = "monitoring";
+		if (sql_user == null || sql_user == "" )
+			sql_user = "postgres";
+		if (sql_password == null || sql_password == "" )
+			sql_password = "";
+
 		logger.info("activemq_ip: " + activemq_ip);
 		logger.info("activemq_port: " + activemq_port);
 		
@@ -134,10 +150,6 @@ public class Main {
 				getContext().addComponent("activemq", JmsComponent.jmsComponentAutoAcknowledge(connectionFactory));
 				
 				
-				ApplicationContext appContext = new ClassPathXmlApplicationContext(
-						"applicationContext.xml");
-				CamelContext camelContext = SpringCamelContext.springCamelContext(
-						appContext, false);
 				//getContext().reg
 				
 				SqlComponent sql = new SqlComponent();
@@ -147,18 +159,21 @@ public class Main {
 				
 							
 				// Heartbeats
+				if (usejms.equals("true")){
+					from("timer://foo?period={{heartbeatsdelay}}")
+					//.choice()
+			        .process(new Processor() {
+						public void process(Exchange exchange) throws Exception {
+							ZabbixAPIConsumer.genHeartbeatMessage(exchange);
+						}
+					})
+					//.bean(WsdlNNMConsumer.class, "genHeartbeatMessage", exchange)
+			        .marshal(myJson)
+			        .to("activemq:{{heartbeatsqueue}}")
+					.log("*** Heartbeat: ${id}");
+				}
+					
 				
-				from("timer://foo?period={{heartbeatsdelay}}")
-				//.choice()
-		        .process(new Processor() {
-					public void process(Exchange exchange) throws Exception {
-						ZabbixAPIConsumer.genHeartbeatMessage(exchange);
-					}
-				})
-				//.bean(WsdlNNMConsumer.class, "genHeartbeatMessage", exchange)
-		        .marshal(myJson)
-		        .to("activemq:{{heartbeatsqueue}}")
-				.log("*** Heartbeat: ${id}");
 		        
 				// get metrics and ci
 				from("zabbixapi://metricshistory?"
@@ -196,9 +211,12 @@ public class Main {
 					.when(header("queueName").isEqualTo("UpdateLastPoll"))
 						.to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
 					.otherwise()
-						.marshal(myJson)
-						.to("activemq:{{eventsqueue}}")
-						.log(LoggingLevel.ERROR, "*** Error: ${id} ${header.DeviceId}")
+						.choice()
+							.when(constant(usejms).isEqualTo("true"))
+							.marshal(myJson)
+							.to("activemq:{{eventsqueue}}")
+							.log(LoggingLevel.ERROR, "*** Error: ${id} ${header.DeviceId}")
+							.endChoice()
 						.endChoice()
 					.end()
 					
