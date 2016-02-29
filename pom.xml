@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>ru.atc.monitoring</groupId>
 	<artifactId>camel-zabbix-api-metrics-history-adapter</artifactId>
-	<version>0.1-SNAPSHOT</version>
+	<version>0.4-SNAPSHOT</version>
 
 	<properties>
 		<camel-version>2.15.3</camel-version>
@@ -19,7 +19,13 @@
     		<artifactId>camel-sql</artifactId>
     		<version>${camel-version}</version>
     		<!-- use the same version as your Camel core version -->
-		</dependency>	
+		</dependency>
+		<dependency>
+			<groupId>org.apache.camel</groupId>
+			<artifactId>camel-jdbc</artifactId>
+			<version>${camel-version}</version>
+			<!-- use the same version as your Camel core version -->
+		</dependency>
 		<dependency>
 			<groupId>org.apache.camel</groupId>
 			<artifactId>camel-cache</artifactId>
@@ -206,7 +212,7 @@
 						</manifestEntries>
 					</archive>
 
-					<finalName>${project.build.targetName}/${project.build.targetName}</finalName>
+					<finalName>${project.build.targetName}/${project.build.targetName}-${project.version}</finalName>
 				</configuration>
 			</plugin>
 

@@ -25,6 +25,12 @@ public class ZabbixAPIConfiguration {
 	private String test;
 	
 	private String lastpolltime;
+
+	private String zabbixMaxElementsLimit;
+
+	private int batchRowCount;
+
+	private int maxDiffTime;
 	
 	private int lastid = 0;
 	
@@ -127,4 +133,27 @@ public class ZabbixAPIConfiguration {
 	}
 
 
+	public String getZabbixMaxElementsLimit() {
+		return zabbixMaxElementsLimit;
+	}
+
+	public void setZabbixMaxElementsLimit(String zabbixMaxElementsLimit) {
+		this.zabbixMaxElementsLimit = zabbixMaxElementsLimit;
+	}
+
+	public int getBatchRowCount() {
+		return batchRowCount;
+	}
+
+	public void setBatchRowCount(int batchRowCount) {
+		this.batchRowCount = batchRowCount;
+	}
+
+	public int getMaxDiffTime() {
+		return maxDiffTime;
+	}
+
+	public void setMaxDiffTime(int maxDiffTime) {
+		this.maxDiffTime = maxDiffTime;
+	}
 }

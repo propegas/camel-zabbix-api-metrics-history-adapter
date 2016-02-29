@@ -17,6 +17,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.jdbc.JdbcComponent;
 import org.apache.camel.component.jms.JmsComponent;
 import org.apache.camel.component.properties.PropertiesComponent;
 import org.apache.camel.component.sql.SqlComponent;
@@ -156,6 +157,12 @@ public class Main {
 				BasicDataSource ds = setupDataSource();
 				sql.setDataSource(ds);
 				getContext().addComponent("sql", sql);
+
+                JdbcComponent jdbc = new JdbcComponent();
+                jdbc.setDataSource(ds);
+                getContext().addComponent("jdbc", jdbc);
+
+                getContext().setAllowUseOriginalMessage(false);
 				
 							
 				// Heartbeats
@@ -184,6 +191,9 @@ public class Main {
 		    			+ "adaptername={{adaptername}}&"
 		    			+ "zabbix_item_ke_pattern={{zabbix_item_ke_pattern}}&"
 		    			+ "source={{source}}&"
+                        + "batchRowCount={{batchRowCount}}&"
+                        + "maxDiffTime={{maxDiffTime}}&"
+                        + "zabbixMaxElementsLimit={{zabbixMaxElementsLimit}}&"
 		    			+ "lastpolltime={{lastpolltime}}&"
 		    			+ "zabbix_item_description_pattern={{zabbix_item_description_pattern}}")
 
@@ -192,18 +202,24 @@ public class Main {
 						//.to("sql:{{sql.insertMetric}}?dataSource=dataSource")
 						.log(LoggingLevel.DEBUG, "**** use table: ${header.Table}")
 						.log(LoggingLevel.DEBUG, "**** use query: {{sql.insertMetricHistory}}")
+						/*
 						.choice()
+
 							.when(header("Table").isEqualTo("history_float"))
-								.to("sql:insert into history_float {{sql.insertMetricHistory}}")
+								.to("sql:insert into history_float {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
 							.when(header("Table").isEqualTo("history_int"))
-								.to("sql:insert into history_int {{sql.insertMetricHistory}}")
+								.to("sql:insert into history_int {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
 							.when(header("Table").isEqualTo("history_str"))
-								.to("sql:insert into history_str {{sql.insertMetricHistory}}")
+								.to("sql:insert into history_str {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
 							.when(header("Table").isEqualTo("history_log"))
-								.to("sql:insert into history_log {{sql.insertMetricHistory}}")
+								.to("sql:insert into history_log {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
 							.when(header("Table").isEqualTo("history_text"))
-								.to("sql:insert into history_text {{sql.insertMetricHistory}}")
+								.to("sql:insert into history_text {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
 						.end()
+						*/
+                        .to("jdbc:BasicDataSource")
+
+
 						//.recipientList(simple("sql:insert into ${header.Table} {{sql.insertMetricHistory}}"))
 						.log(LoggingLevel.DEBUG, "**** Inserted new ${body[itemid]} with value: ${body[value]} ")
 						.endChoice()

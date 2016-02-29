@@ -1,13 +1,13 @@
 package ru.atc.camel.zabbix.metrics.history;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+//import java.io.IOException;
+//import java.io.UnsupportedEncodingException;
 //import java.security.KeyManagementException;
 //import java.security.KeyStore;
 //import java.security.KeyStoreException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.sql.Array;
+//import java.security.MessageDigest;
+//import java.security.NoSuchAlgorithmException;
+//import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -17,9 +17,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+//import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+//import java.util.regex.Matcher;
+//import java.util.regex.Pattern;
 
 //import javax.net.ssl.SSLContext;
 
@@ -29,13 +30,13 @@ import org.apache.camel.impl.ScheduledPollConsumer;
 import org.apache.commons.dbcp.BasicDataSource;
 //import org.apache.commons.lang.ArrayUtils;
 //import org.apache.http.HttpVersion;
-import org.apache.http.client.ClientProtocolException;
+//import org.apache.http.client.ClientProtocolException;
 //import org.apache.http.client.CookieStore;
 //import org.apache.http.client.config.RequestConfig;
 //import org.apache.http.client.methods.HttpPut;
 //import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 //import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
-import org.apache.http.impl.client.CloseableHttpClient;
+//import org.apache.http.impl.client.CloseableHttpClient;
 //import org.apache.http.impl.client.DefaultHttpClient;
 //import org.apache.http.impl.client.HttpClientBuilder;
 //import org.apache.http.impl.client.HttpClients;
@@ -61,10 +62,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
 	private static ZabbixAPIEndpoint endpoint;
 
-	//private static String SavedWStoken;
-
-	private static CloseableHttpClient httpClient;
-
 	public enum PersistentEventSeverity {
 		OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;
 
@@ -80,9 +77,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	public ZabbixAPIConsumer(ZabbixAPIEndpoint endpoint, Processor processor) {
 		super(endpoint, processor);
 		ZabbixAPIConsumer.endpoint = endpoint;
+		
 		// this.afterPoll();
 		this.setTimeUnit(TimeUnit.MINUTES);
 		this.setInitialDelay(0);
+		//ScheduledExecutorService scheduledExecutorService;
+		//scheduledExecutorService
+		//this.setScheduledExecutorService(scheduledExecutorService);
 		this.setDelay(endpoint.getConfiguration().getDelay());
 	}
 
@@ -111,19 +112,19 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		return timeout;
 	}
 
-	private int processSearchDevices() throws ClientProtocolException, IOException, Exception {
+	private int processSearchDevices() throws Exception {
 
 		// Long timestamp;
 
-		List<Map<String, Object>> intItemsList = new ArrayList<Map<String, Object>>();
-		List<Map<String, Object>> floatItemsList = new ArrayList<Map<String, Object>>();
-		List<Map<String, Object>> strItemsList = new ArrayList<Map<String, Object>>();
-		List<Map<String, Object>> textItemsList = new ArrayList<Map<String, Object>>();
-		List<Map<String, Object>> logItemsList = new ArrayList<Map<String, Object>>();
+		List<Map<String, Object>> intItemsList;
+		List<Map<String, Object>> floatItemsList;
+		List<Map<String, Object>> strItemsList;
+		List<Map<String, Object>> textItemsList;
+		List<Map<String, Object>> logItemsList;
 		
 		//List<Map<String, Object>> webitemsList = new ArrayList<Map<String, Object>>();
 		
-		List<Map<String, Object>> listFinal = new ArrayList<Map<String, Object>>();
+		List<Map<String, Object>> listFinal = new ArrayList<>();
 		
 		//List<Device> listFinal = new ArrayList<Device>();
 
@@ -143,10 +144,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			String username = endpoint.getConfiguration().getUsername();
 			String password = endpoint.getConfiguration().getPassword();
 			String lastpolltime = endpoint.getConfiguration().getLastpolltime();
-			String lastpolltimetozab = "";
-			
-			long lastclockfromDB = getLastClockFromDB();
-			
+			String lastpolltimetozab;
+
 			// String url = "http://192.168.90.102/zabbix/api_jsonrpc.php";
 			zabbixApi = new DefaultZabbixApi(zabbixapiurl);
 			zabbixApi.init();
@@ -157,8 +156,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 				
 				throw new RuntimeException("Failed to login to Zabbix API.");
 			}
-			
-			// get last poll timestamp
+
+            long lastclockfromDB = getLastClockFromDB();
+            long currentTimeStamp = System.currentTimeMillis() / 1000;
+
+            // get last poll timestamp
 			if (lastpolltime.equals("0")) {
 				//lastpolltime = getLastClockFromZabbix(zabbixApi);
 				lastpolltime = lastclockfromDB + "";
@@ -169,31 +171,24 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 				lastpolltimetozab = lastpolltime;
 				//lastpolltime = getLastClockFromZabbix(zabbixApi);
 			}
-			 
-			
 
-			// Get all Items marked as [FOR_INTEGRATION] from Zabbix
-			String[] itemids = {}; 
-			String[] webitemids = {};
-			//itemids = getAllItems(zabbixApi);
-			//if (itemids != null)java
-				//listFinal.addAll(itemsList);
-			
-			// Get all WEB Items from Zabbix
-			//webitemids = getAllWebItems(zabbixApi);
-			//if (webitemids != null)
-				
-				//listFinal.addAll(webitemsList);
-			
-			//String[] allitemids = (String[])ArrayUtils.addAll(itemids, webitemids);
-			
+            String tilltimeToZabbix = "";
+            // if different between saved and current Zabbix time more than 3 hours
+            int maxDiffTime = endpoint.getConfiguration().getMaxDiffTime();
+            if (currentTimeStamp - Integer.parseInt(lastpolltimetozab) > maxDiffTime){
+                tilltimeToZabbix = Integer.parseInt(lastpolltimetozab) + maxDiffTime + "";
+                logger.info("**** Different between saved and current Zabbix time more than N hours");
+                logger.info(String.format("**** Set 'till_time' property: %s", tilltimeToZabbix));
+            }
+
+
 			// get itemids from DB
 			String[] allitemids = getAllItemsIdFromDB();
 			
 			/*
 			 * History object types to return. 
 
-				Possible values: 
+				Possible values:
 				0 - float; 
 				1 - string; 
 				2 - log; 
@@ -202,10 +197,12 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 				
 				Default: 3.
 			 */
-			// get ints
-			long lastclock = 0;
+
+			long lastclock;
 			long lastclockfinal = 0;
-			intItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab, 0 );
+
+            // get ints
+			intItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab, tilltimeToZabbix, 3 );
 			if (intItemsList != null && !intItemsList.isEmpty()){
 				listFinal.addAll(intItemsList);
 				lastclock = (long) intItemsList.get(0).get("timestamp");
@@ -213,7 +210,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 					lastclockfinal = lastclock;
 			}
 			// get floats
-			floatItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab, 3 );
+			floatItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab,tilltimeToZabbix, 0 );
 			if (floatItemsList != null && !floatItemsList.isEmpty()){
 				listFinal.addAll(floatItemsList);
 				lastclock = (long) floatItemsList.get(0).get("timestamp");
@@ -223,7 +220,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			//}
 			
 			// get str
-			strItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab, 1 );
+			strItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab,tilltimeToZabbix, 1 );
 			if (strItemsList != null && !strItemsList.isEmpty()){
 				listFinal.addAll(strItemsList);
 				lastclock = (long) strItemsList.get(0).get("timestamp");
@@ -233,7 +230,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			//}
 			
 			// get text
-			textItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab, 4 );
+			textItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab,tilltimeToZabbix, 4 );
 			if (textItemsList != null && !textItemsList.isEmpty()){
 				listFinal.addAll(textItemsList);
 				lastclock = (long) textItemsList.get(0).get("timestamp");
@@ -243,7 +240,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			//}
 			
 			// get log
-			logItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab, 2 );
+			logItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab,tilltimeToZabbix, 2 );
 			if (logItemsList != null && !logItemsList.isEmpty()){
 				listFinal.addAll(logItemsList);
 				lastclock = (long) logItemsList.get(0).get("timestamp");
@@ -252,53 +249,37 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			}
 			//}
 			
-			logger.info("Create Exchange containers...");
-			for (int i = 0; i < listFinal.size(); i++) {
-				logger.debug("Create Exchange container " + i);
-				
-				logger.debug(String.format("Send History for item:%d with value:%s and timestamp %s", 
-								listFinal.get(i).get("itemid"), 
-								listFinal.get(i).get("value"), 
-								listFinal.get(i).get("timestamp")));
-				
-				Exchange exchange = getEndpoint().createExchange();
-				Integer historytype = (Integer) listFinal.get(i).get("historytype");
-				String table = "";
-				switch (historytype) {
-	        	case 3:  table = "history_int";break;
-	        	case 0:  table = "history_float";break;
-	        	case 2:  table = "history_log";break;
-	        	case 1:  table = "history_str";break;
-	        	case 4:  table = "history_text";break;
-	        	
-	        	default:  table = "history_text";break;
+			processSqlItemsToExchange(intItemsList, "INT");
+            if (intItemsList != null) {
+                logger.info("Sended INT Metrics: " + intItemsList.size());
+            }
+            processSqlItemsToExchange(floatItemsList, "FLOAT");
+            if (floatItemsList != null) {
+                logger.info("Sended FLOAT Metrics: " + floatItemsList.size());
+            }
+            processSqlItemsToExchange(strItemsList, "STR");
+            if (strItemsList != null) {
+                logger.info("Sended STR Metrics: " + strItemsList.size());
+            }
+            processSqlItemsToExchange(textItemsList, "TEXT");
+            if (textItemsList != null) {
+                logger.info("Sended TEXT Metrics: " + textItemsList.size());
+            }
+            processSqlItemsToExchange(logItemsList, "LOG");
+            if (logItemsList != null) {
+                logger.info("Sended LOG Metrics: " + logItemsList.size());
+            }
 
-				}
-				
-				exchange.getIn().setBody(listFinal.get(i));
-				exchange.getIn().setHeader("Table", table);
-				//exchange.getIn().setHeader("DeviceType", listFinal.get(i).getDeviceType());
-				exchange.getIn().setHeader("queueName", "Metrics");
-				
-
-				try {
-					getProcessor().process(exchange);
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				
-			}
 			
-			logger.info("Sended Metrics: " + listFinal.size());
+			// save last received clock from zabbix to DB
+            if (!tilltimeToZabbix.equals(""))
+                lastclockfinal = Integer.parseInt(tilltimeToZabbix);
 			
-			// save last received clock from zabbix to DB 
+			logger.info(String.format("Save last clock timestamp: %s", lastclockfinal + 1 ));
 			
-			logger.info(String.format("Save last clock timestamp: %s", lastclockfinal));
+			endpoint.getConfiguration().setLastpolltime(lastclockfinal + 1 + "");
 			
-			endpoint.getConfiguration().setLastpolltime(lastclockfinal + "");
-			
-			Map<String, Object> answer = new HashMap<String, Object>();
+			Map<String, Object> answer = new HashMap<>();
 		    //answer.put("timestamp", (long) Integer.parseInt(lastpolltime));
 			answer.put("timestamp", lastclockfinal);
 			answer.put("source", endpoint.getConfiguration().getZabbixapiurl());
@@ -321,26 +302,23 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			genErrorMessage(e.getMessage() + " " + e.toString());
 			//httpClient.close();
 			return 0;
-		} catch (Error e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			logger.error(String.format("Error while get Metrics History from API: %s ", e));
-			genErrorMessage(e.getMessage() + " " + e.toString());
-			//httpClient.close();
-			zabbixApi.destory();
-			return 0;
 		} catch (Throwable e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 			logger.error(String.format("Error while get Metrics History from API: %s ", e));
 			genErrorMessage(e.getMessage() + " " + e.toString());
 			//httpClient.close();
-			zabbixApi.destory();
+			if (zabbixApi != null) {
+				zabbixApi.destory();
+			}
 			return 0;
 		} finally {
-			logger.debug(String.format(" **** Close zabbixApi Client: %s", zabbixApi.toString()));
+			logger.debug(String.format(" **** Close zabbixApi Client: %s",
+					zabbixApi != null ? zabbixApi.toString() : null));
 			// httpClient.close();
-			zabbixApi.destory();
+			if (zabbixApi != null) {
+				zabbixApi.destory();
+			}
 			// dataSource.close();
 			// return 0;
 		}
@@ -348,20 +326,76 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		return 1;
 	}
 
-	private String[] getAllItemsIdFromDB() throws SQLException, Throwable {
+    private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type){
 
-		String [] itemids= new String[] {};
+        logger.info("Create Exchange containers for " +type +" history metrics...");
+        int batchRowCount = 0;
+        String sqlPrefixPart = "insert into history_" + type.toLowerCase() +" (itemid, value, timestamp) values ";
+        String sql= "";
+
+        for (int i = 0; i < (itemsList != null ? itemsList.size() : 0); i++) {
+
+            sql = sql + String.format(" (%s, '%s', to_timestamp('%s')),",
+                    itemsList.get(i).get("itemid"),
+                    itemsList.get(i).get("value"),
+                    itemsList.get(i).get("timestamp"));
+
+            //logger.info("i : " + i + " / " + itemsList.size());
+
+            int mod = (i+1) % endpoint.getConfiguration().getBatchRowCount();
+
+            if (mod == 0 || ( i == itemsList.size() -1 )){
+                batchRowCount++;
+
+                //logger.info("batchRowCount : " + batchRowCount);
+
+                String fullSql = String.format("%s %s",
+                        sqlPrefixPart,
+                        sql.substring(0, sql.length() - 1) );
+                logger.debug("fullSql: " + fullSql);
+
+                int rowCount = mod == 0 ? endpoint.getConfiguration().getBatchRowCount() : mod;
+
+                logger.debug("Create Batch Insert SQL Exchange container: " + rowCount + " history rows");
+                Exchange exchange = getEndpoint().createExchange();
+                exchange.getIn().setBody(fullSql);
+                exchange.getIn().setHeader("queueName", "Metrics");
+
+                try {
+                        getProcessor().process(exchange);
+                        logger.info("Inserted " + rowCount + " history rows to database");
+                        //return true;
+                    } catch (Exception e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                        logger.error("Error while Insert items to database");
+                        //return false;
+                    }
+
+                // reset batch count
+                sql = "";
+                batchRowCount = 0;
+            }
+        }
+
+
+
+    }
+
+	private String[] getAllItemsIdFromDB() throws Throwable {
+
+		String [] itemids = new String[0];
 
 		BasicDataSource ds = Main.setupDataSource();
 		
 		Connection con = null; 
 	    PreparedStatement pstmt;
-	    ResultSet resultset = null;
+	    ResultSet resultset;
 	    
 	    logger.info(" **** Try to get metrics IDs from DB  ***** " );
 	    try {
 	    	
-	    	con = (Connection) ds.getConnection();
+	    	con = ds.getConnection();
 	    	
 			pstmt = con.prepareStatement("select itemid from metrics;");
 						
@@ -371,19 +405,21 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			//resultset.next();
 			//int i = 0;
 			
-			List<HashMap<String,Object>> listc = new ArrayList<HashMap<String,Object>>();
+			List<HashMap<String,Object>> listc;
 			
 			listc = convertRStoList(resultset);
 			
 			//listc.toArray(itemids);
-			
-			itemids= new String[listc.size()] ;
-			for(int i = 0; i < listc.size(); i++) {
-				//itemids[i] = items.getJSONObject(i).getString("itemid");
-				itemids[i] = listc.get(i).get("itemid").toString();
-				logger.debug("Found ItemID in DB: " + i + ": " + itemids[i]);
+
+			if (listc != null) {
+				itemids= new String[listc.size()] ;
+				for(int i = 0; i < listc.size(); i++) {
+                    //itemids[i] = items.getJSONObject(i).getString("itemid");
+                    itemids[i] = listc.get(i).get("itemid").toString();
+                    logger.debug("Found ItemID in DB: " + i + ": " + itemids[i]);
+                }
 			}
-				
+
 			//i++;
 				
 			
@@ -397,8 +433,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			*/
 			resultset.close();
 	        pstmt.close();
-	        
-	        if (con != null) con.close();
+
+			con.close();
     	
 	        return itemids;
     	
@@ -425,7 +461,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	    }
 	}
 
-	private Long getLastClockFromDB() throws SQLException, Throwable {
+	private Long getLastClockFromDB() throws Throwable {
 		
 		long lastclock = 0;
 
@@ -438,7 +474,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	    logger.info(" **** Try to get Last metrics Clock from DB  ***** " );
 	    try {
 	    	
-	    	con = (Connection) ds.getConnection();
+	    	con = ds.getConnection();
 	    	
 			pstmt = con.prepareStatement("select cast(extract(epoch from lastclock) as integer) as lastclock "
 					+ "from metrics_lastpoll "
@@ -456,41 +492,42 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			
 			resultset.close();
 	        pstmt.close();
-	        
-	        if (con != null) con.close();
+
+			con.close();
     	
     	return lastclock;
-    	
-	} catch (SQLException e) {
-		// TODO Auto-generated catch block
-		//e.printStackTrace();
-		logger.error( String.format("Error while SQL execution: %s ", e));
-		
-		if (con != null) con.close();
-		
-		//return null;
-		throw e;
 
-	} catch (Throwable e) { //send error message to the same queue
-		// TODO Auto-generated catch block
-		logger.error( String.format("Error while execution: %s ", e));
-		//genErrorMessage(e.getMessage());
-		// 0;
-		throw e;
-	} finally {
-        if (con != null) con.close();
-        
-        //return list;
+        } catch (SQLException e) {
+            // TODO Auto-generated catch block
+            //e.printStackTrace();
+            logger.error(String.format("Error while SQL execution: %s ", e));
+
+            if (con != null) con.close();
+
+            //return null;
+            throw e;
+
+        } catch (Throwable e) { //send error message to the same queue
+            // TODO Auto-generated catch block
+            logger.error(String.format("Error while execution: %s ", e));
+            //genErrorMessage(e.getMessage());
+            // 0;
+            throw e;
+        } finally {
+            if (con != null) con.close();
+
+            //return list;
+        }
     }
-	}
 
 	private String getLastClockFromZabbix(DefaultZabbixApi zabbixApi) {
 		// TODO Auto-generated method stub
 		Request getRequest;
 		JSONObject getResponse;
 		// JsonObject params = new JsonObject();
+        logger.info(" **** Try to get Last metrics Clock from Zabbix  ***** " );
 		try {
-			JSONObject filter = new JSONObject();
+			//JSONObject filter = new JSONObject();
 						
 			getRequest = RequestBuilder.newBuilder().method("history.get")
 					.paramEntry("output",  "extend")
@@ -530,30 +567,36 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	}
 
 	private List<Map<String, Object>> getHistoryByItems(DefaultZabbixApi zabbixApi, String[] allitemids, 
-				String time_from, int historytype) {
-		
+				String time_from, String time_till, int historytype) {
+
+        String limitElements = endpoint.getConfiguration().getZabbixMaxElementsLimit();
 		
 		Request getRequest;
+        RequestBuilder getRequestBuilder;
 		JSONObject getResponse;
 		// JsonObject params = new JsonObject();
 		try {
 			
-			logger.info(String.format("**** Try to get metrics History for item type: %d from timestamp: %s", 
-						historytype, time_from));
+			logger.info(String.format("**** Try to get metrics History for item type: " +
+                    "%d from timestamp: %s to timestamp: %s", historytype, time_from, time_till));
 			
 			//JSONObject filter = new JSONObject();
 			//filter.put("type", new String[] { "9" });
 			
-			getRequest = RequestBuilder.newBuilder().method("history.get")
+			getRequestBuilder = RequestBuilder.newBuilder().method("history.get")
 					.paramEntry("history", historytype)
 					.paramEntry("output", "extend")
+                    //.paramEntry("output", new String[] { "itemid", "value", "clock" })
 					.paramEntry("itemids", allitemids)
 					.paramEntry("time_from", time_from)
-					//.paramEntry("time_till", time_till)
+  					//.paramEntry("time_till", time_till)
 					.paramEntry("sortfield", "clock")
 					.paramEntry("sortorder", "DESC")
-					.paramEntry("limit", 20000)
-					.build();
+					.paramEntry("limit", limitElements);
+            if (!time_till.equals(""))
+                getRequestBuilder.paramEntry("time_till", time_till);
+
+            getRequest = getRequestBuilder.build();
 
 		} catch (Exception ex) {
 			ex.printStackTrace();
@@ -561,8 +604,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		}
 		JSONArray history;
 		try {
+            System.err.println(getRequest);
 			getResponse = zabbixApi.call(getRequest);
-			//System.err.println(getRequest);
+
 			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
 
 			history = getResponse.getJSONArray("result");
@@ -574,9 +618,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			throw new RuntimeException("Failed get JSON response result for get History of items.");
 		}
 		
-		List<Map<String, Object>> deviceList = new ArrayList<Map<String, Object>>();
+		List<Map<String, Object>> deviceList = new ArrayList<>();
 		
-		List<Map<String, Object>> listFinal = new ArrayList<Map<String, Object>>();
+		List<Map<String, Object>> listFinal = new ArrayList<>();
 		
 		//List<Device> listFinal = new ArrayList<Device>();
 		
@@ -590,7 +634,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			//String clock = historyitem.getString("clock");
 			Long timestamp = (long) Integer.parseInt(historyitem.getString("clock"));
 			
-			Object value = null;
+			Object value;
 			/*
 			 * Possible values: 
 			0 - float; 
@@ -600,15 +644,15 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			4 - text. 
 			 */
 			switch (historytype) {
-        	case 3:  value = (long)Long.parseLong(rowvalue);break;
-        	case 0:  value = (float)Float.parseFloat(rowvalue);break;
+        	case 3:  value = Long.parseLong(rowvalue);break;
+        	case 0:  value = Float.parseFloat(rowvalue);break;
         	
-        	default:  value = (String)rowvalue;break;
+        	default:  value = rowvalue;break;
 
 			}
 						
 		
-			Map<String, Object> answer = new HashMap<String, Object>();
+			Map<String, Object> answer = new HashMap<>();
 			answer.put("itemid", itemid);
 			answer.put("value", value);
 		    answer.put("timestamp", timestamp);
@@ -621,177 +665,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		listFinal.addAll(deviceList);
 		
 		return listFinal;
-	}
-
-	private String[] getAllWebItems(DefaultZabbixApi zabbixApi) {
-		
-		Request getRequest;
-		JSONObject getResponse;
-		// JsonObject params = new JsonObject();
-		try {
-			JSONObject filter = new JSONObject();
-			filter.put("type", new String[] { "9" });
-			
-			getRequest = RequestBuilder.newBuilder().method("item.get")
-					.paramEntry("filter", filter)
-					.paramEntry("output", new String[] { "itemid" })
-					.paramEntry("monitored", true)
-					.paramEntry("webitems", true)
-					.build();
-
-		} catch (Exception ex) {
-			ex.printStackTrace();
-			throw new RuntimeException("Failed create JSON request for get all Web Items.");
-		}
-		JSONArray items;
-		try {
-			getResponse = zabbixApi.call(getRequest);
-			//System.err.println(getRequest);
-			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
-
-			items = getResponse.getJSONArray("result");
-			logger.debug("****** Finded Zabbix getResponse: " + getResponse);
-
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			throw new RuntimeException("Failed get JSON response result for all Web Items.");
-		}
-		logger.info("Finded Zabbix Items: " + items.size());
-		
-		//String[] itemids = (String[]) items.toArray();
-		String[] itemids = new String[items.size()];
-		for(int i = 0; i < items.size(); i++) {
-			itemids[i] = items.getJSONObject(i).getString("itemid");
-			logger.debug("Item " + i + ": " + itemids[i]);
-		}
-		
-		//listFinal.addAll(deviceList);
-		
-		return itemids;
-			
-	}
-	
-	private String[] getAllItems(DefaultZabbixApi zabbixApi) {
-		// TODO Auto-generated method stub
-		Request getRequest;
-		JSONObject getResponse;
-		// JsonObject params = new JsonObject();
-		try {
-			JSONObject filter = new JSONObject();
-			filter.put("description", new String[] { endpoint.getConfiguration().getZabbix_item_description_pattern() });
-			
-			getRequest = RequestBuilder.newBuilder().method("item.get")
-					.paramEntry("search", filter)
-					.paramEntry("output", new String[] { "itemid" })
-					.paramEntry("monitored", true)
-										
-					.build();
-
-		} catch (Exception ex) {
-			ex.printStackTrace();
-			throw new RuntimeException("Failed create JSON request for get all Hosts.");
-		}
-		JSONArray items;
-		try {
-			getResponse = zabbixApi.call(getRequest);
-			//System.err.println(getRequest);
-			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
-
-			items = getResponse.getJSONArray("result");
-			logger.debug("****** Finded Zabbix getResponse: " + getResponse);
-
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			throw new RuntimeException("Failed get JSON response result for all CI Items.");
-		}
-		//List<Map<String, Object>> deviceList = new ArrayList<Map<String, Object>>();
-		
-		//List<Map<String, Object>> listFinal = new ArrayList<Map<String, Object>>();
-		
-		//List<Device> listFinal = new ArrayList<Device>();
-		
-		logger.info("Finded Zabbix Items: " + items.size());
-		
-		//String[] itemids = (String[]) items.toArray();
-		String[] itemids = new String[items.size()];
-		for(int i = 0; i < items.size(); i++) {
-			itemids[i] = items.getJSONObject(i).getString("itemid");
-			logger.debug("Item " + i + ": " + itemids[i]);
-		}
-		
-		//listFinal.addAll(deviceList);
-		
-		return itemids;
-			
-	}
-
-	private String getTransformedItemName(String name, String key) {
-		// TODO Auto-generated method stub
-		
-		String transformedname = "";
-		//String webstep = "";
-		
-		// get params from key to item $1 placeholder
-		// Example:
-		// vfs.fs.size[/oracle,pfree]
-		
-		Pattern p = Pattern.compile("(.*)\\[(.*)\\]");
-		Matcher matcher = p.matcher(key);
-		
-		String keyparams = "";
-		String webscenario = "";
-		String webstep = "";
-		
-		String[] params = new String[] { } ;
-		
-		// if Web Item has webscenario pattern
-		// Example:
-		// web.test.in[WebScenario,,bps]
-		if (matcher.matches()) {
-			
-			logger.debug("*** Finded Zabbix Item key with Pattern: " + key);
-			// save as ne CI name
-			keyparams = matcher.group(2).toString();
-			
-			// get scenario and step from key params
-			//String[] params = new String[] { } ;
-			params = keyparams.split(",");
-			logger.debug(String.format("*** Finded Zabbix Item key params (size): %d ", params.length));
-						
-			//logger.debug(String.format("*** Finded Zabbix Item key params: %s:%s ", webscenario, webstep));
-
-
-		}
-		// if Item has no CI pattern
-		else {
-			
-			
-		}
-		
-		logger.debug("Item name: " + name);
-		
-		String param = "";
-		int paramnumber;
-		Matcher m = Pattern.compile("\\$\\d+").matcher(name);
-		while (m.find()) {
-			param = m.group(0);
-			paramnumber = Integer.parseInt(param.substring(1));
-			logger.debug("Found Param: " + paramnumber);
-			logger.debug("Found Param Value: " + param);
-			logger.debug("Found Param Value Replace: " + params[paramnumber-1]);
-			
-			name = name.replaceAll("\\$"+paramnumber, params[paramnumber-1]);
-			
-		}
-
-		
-		//logger.debug("New Zabbix Web Item Scenario: " + webelements[0]);
-		logger.debug("New Zabbix Item Name: " + name);
-		
-		return name;
-
 	}
 
 	private void genErrorMessage(String message) {
@@ -858,32 +731,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		}
 	}
 
-	private static String hashString(String message, String algorithm)
-            throws Exception {
- 
-        try {
-            MessageDigest digest = MessageDigest.getInstance(algorithm);
-            byte[] hashedBytes = digest.digest(message.getBytes("UTF-8"));
- 
-            return convertByteArrayToHexString(hashedBytes);
-        } catch (NoSuchAlgorithmException | UnsupportedEncodingException ex) {
-            throw new RuntimeException(
-                    "Could not generate hash from String", ex);
-        }
-	}
-	
-	private static String convertByteArrayToHexString(byte[] arrayBytes) {
-        StringBuffer stringBuffer = new StringBuffer();
-        for (int i = 0; i < arrayBytes.length; i++) {
-            stringBuffer.append(Integer.toString((arrayBytes[i] & 0xff) + 0x100, 16)
-                    .substring(1));
-        }
-        return stringBuffer.toString();
-    }
-	
+
 private List<HashMap<String, Object>> convertRStoList(ResultSet resultset) throws SQLException {
 		
-		List<HashMap<String,Object>> list = new ArrayList<HashMap<String,Object>>();
+		List<HashMap<String,Object>> list = new ArrayList<>();
 		
 		try {
 			ResultSetMetaData md = resultset.getMetaData();
@@ -901,7 +752,7 @@ private List<HashMap<String, Object>> convertRStoList(ResultSet resultset) throw
 	        //ArrayList<String> arrayList = new ArrayList<String>(); 
 	
 	        while (resultset.next()) {              
-	        	HashMap<String,Object> row = new HashMap<String, Object>(columns);
+	        	HashMap<String,Object> row = new HashMap<>(columns);
 	            for(int i1=1; i1<=columns; ++i1) {
 	            	logger.debug("DB SQL getColumnLabel: " + md.getColumnLabel(i1)); 
 	            	logger.debug("DB SQL getObject: " + resultset.getObject(i1)); 
