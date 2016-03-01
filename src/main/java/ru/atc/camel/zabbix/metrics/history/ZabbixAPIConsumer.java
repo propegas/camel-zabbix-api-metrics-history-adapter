@@ -8,26 +8,31 @@ package ru.atc.camel.zabbix.metrics.history;
 //import java.security.MessageDigest;
 //import java.security.NoSuchAlgorithmException;
 //import java.sql.Array;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-//import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-//import java.util.regex.Matcher;
-//import java.util.regex.Pattern;
 
-//import javax.net.ssl.SSLContext;
-
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import io.github.hengyunabc.zabbix.api.DefaultZabbixApi;
+import io.github.hengyunabc.zabbix.api.Request;
+import io.github.hengyunabc.zabbix.api.RequestBuilder;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
 import org.apache.commons.dbcp.BasicDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ru.at_consulting.itsm.event.Event;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+//import java.util.concurrent.ScheduledExecutorService;
+//import java.util.regex.Matcher;
+//import java.util.regex.Pattern;
+//import javax.net.ssl.SSLContext;
 //import org.apache.commons.lang.ArrayUtils;
 //import org.apache.http.HttpVersion;
 //import org.apache.http.client.ClientProtocolException;
@@ -42,18 +47,9 @@ import org.apache.commons.dbcp.BasicDataSource;
 //import org.apache.http.impl.client.HttpClients;
 //import org.apache.http.params.CoreProtocolPNames;
 //import org.apache.http.ssl.SSLContextBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 //import com.google.gson.JsonObject;
-import io.github.hengyunabc.zabbix.api.DefaultZabbixApi;
-import io.github.hengyunabc.zabbix.api.Request;
-import io.github.hengyunabc.zabbix.api.RequestBuilder;
 //import net.sf.ehcache.search.expression.And;
 //import ru.at_consulting.itsm.device.Device;
-import ru.at_consulting.itsm.event.Event;
 //import scala.xml.dtd.ParameterEntityDecl;
 
 public class ZabbixAPIConsumer extends ScheduledPollConsumer {
@@ -62,22 +58,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
 	private static ZabbixAPIEndpoint endpoint;
 
-	public enum PersistentEventSeverity {
-		OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;
-
-		public String value() {
-			return name();
-		}
-
-		public static PersistentEventSeverity fromValue(String v) {
-			return valueOf(v);
-		}
-	}
-
 	public ZabbixAPIConsumer(ZabbixAPIEndpoint endpoint, Processor processor) {
 		super(endpoint, processor);
 		ZabbixAPIConsumer.endpoint = endpoint;
-		
+
 		// this.afterPoll();
 		this.setTimeUnit(TimeUnit.MINUTES);
 		this.setInitialDelay(0);
@@ -85,7 +69,39 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		//scheduledExecutorService
 		//this.setScheduledExecutorService(scheduledExecutorService);
 		this.setDelay(endpoint.getConfiguration().getDelay());
-	}
+    }
+
+    public static void genHeartbeatMessage(Exchange exchange) {
+        // TODO Auto-generated method stub
+        long timestamp = System.currentTimeMillis();
+        timestamp = timestamp / 1000;
+        // String textError = "Возникла ошибка при работе адаптера: ";
+        Event genevent = new Event();
+        genevent.setMessage("Сигнал HEARTBEAT от адаптера");
+        genevent.setEventCategory("ADAPTER");
+        genevent.setObject("HEARTBEAT");
+        genevent.setSeverity(PersistentEventSeverity.OK.name());
+        genevent.setTimestamp(timestamp);
+        genevent.setEventsource(String.format("%s", endpoint.getConfiguration().getAdaptername()));
+
+        logger.info(" **** Create Exchange for Heartbeat Message container");
+        // Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setBody(genevent, Event.class);
+
+        exchange.getIn().setHeader("Timestamp", timestamp);
+        exchange.getIn().setHeader("queueName", "Heartbeats");
+        exchange.getIn().setHeader("Type", "Heartbeats");
+        exchange.getIn().setHeader("Source", endpoint.getConfiguration().getAdaptername());
+
+        try {
+            // Processor processor = getProcessor();
+            // .process(exchange);
+            // processor.process(exchange);
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            // e.printStackTrace();
+        }
+    }
 
 	@Override
 	protected int poll() throws Exception {
@@ -177,7 +193,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             int maxDiffTime = endpoint.getConfiguration().getMaxDiffTime();
             if (currentTimeStamp - Integer.parseInt(lastpolltimetozab) > maxDiffTime){
                 tilltimeToZabbix = Integer.parseInt(lastpolltimetozab) + maxDiffTime + "";
-                logger.info("**** Different between saved and current Zabbix time more than N hours");
+                logger.info("**** Different between saved and current Zabbix time more than "
+                        + maxDiffTime / 3600 + " hours");
                 logger.info(String.format("**** Set 'till_time' property: %s", tilltimeToZabbix));
             }
 
@@ -238,7 +255,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 					lastclockfinal = lastclock;
 			}
 			//}
-			
+
 			// get log
 			logItemsList= getHistoryByItems(zabbixApi, allitemids, lastpolltimetozab,tilltimeToZabbix, 2 );
 			if (logItemsList != null && !logItemsList.isEmpty()){
@@ -329,7 +346,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
     private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type){
 
         logger.info("Create Exchange containers for " +type +" history metrics...");
-        int batchRowCount = 0;
+        //int batchRowCount = 0;
         String sqlPrefixPart = "insert into history_" + type.toLowerCase() +" (itemid, value, timestamp) values ";
         String sql= "";
 
@@ -345,7 +362,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             int mod = (i+1) % endpoint.getConfiguration().getBatchRowCount();
 
             if (mod == 0 || ( i == itemsList.size() -1 )){
-                batchRowCount++;
+                //batchRowCount++;
 
                 //logger.info("batchRowCount : " + batchRowCount);
 
@@ -374,7 +391,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
                 // reset batch count
                 sql = "";
-                batchRowCount = 0;
+                //batchRowCount = 0;
             }
         }
 
@@ -462,16 +479,16 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	}
 
 	private Long getLastClockFromDB() throws Throwable {
-		
-		long lastclock = 0;
+
+        long lastclock;
 
 		BasicDataSource ds = Main.setupDataSource();
 		
 		Connection con = null; 
 	    PreparedStatement pstmt;
-	    ResultSet resultset = null;
-	    
-	    logger.info(" **** Try to get Last metrics Clock from DB  ***** " );
+        ResultSet resultset;
+
+        logger.info(" **** Try to get Last metrics Clock from DB  ***** " );
 	    try {
 	    	
 	    	con = ds.getConnection();
@@ -604,8 +621,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		}
 		JSONArray history;
 		try {
-            System.err.println(getRequest);
-			getResponse = zabbixApi.call(getRequest);
+            //System.err.println(getRequest);
+            getResponse = zabbixApi.call(getRequest);
 
 			logger.debug("****** Finded Zabbix getRequest: " + getRequest);
 
@@ -699,79 +716,59 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
 	}
 
-	public static void genHeartbeatMessage(Exchange exchange) {
-		// TODO Auto-generated method stub
-		long timestamp = System.currentTimeMillis();
-		timestamp = timestamp / 1000;
-		// String textError = "Возникла ошибка при работе адаптера: ";
-		Event genevent = new Event();
-		genevent.setMessage("Сигнал HEARTBEAT от адаптера");
-		genevent.setEventCategory("ADAPTER");
-		genevent.setObject("HEARTBEAT");
-		genevent.setSeverity(PersistentEventSeverity.OK.name());
-		genevent.setTimestamp(timestamp);
-		genevent.setEventsource(String.format("%s", endpoint.getConfiguration().getAdaptername()));
-
-		logger.info(" **** Create Exchange for Heartbeat Message container");
-		// Exchange exchange = getEndpoint().createExchange();
-		exchange.getIn().setBody(genevent, Event.class);
-
-		exchange.getIn().setHeader("Timestamp", timestamp);
-		exchange.getIn().setHeader("queueName", "Heartbeats");
-		exchange.getIn().setHeader("Type", "Heartbeats");
-		exchange.getIn().setHeader("Source", endpoint.getConfiguration().getAdaptername());
-
-		try {
-			// Processor processor = getProcessor();
-			// .process(exchange);
-			// processor.process(exchange);
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			// e.printStackTrace();
-		}
-	}
-
-
 private List<HashMap<String, Object>> convertRStoList(ResultSet resultset) throws SQLException {
-		
+
 		List<HashMap<String,Object>> list = new ArrayList<>();
-		
+
 		try {
 			ResultSetMetaData md = resultset.getMetaData();
 	        int columns = md.getColumnCount();
 	        //result.getArray(columnIndex)
 	        //resultset.get
-	        logger.debug("DB SQL columns count: " + columns); 
-	        
+            logger.debug("DB SQL columns count: " + columns);
+
 	        //resultset.last();
 	        //int count = resultset.getRow();
-	        //logger.debug("MYSQL rows2 count: " + count); 
-	        //resultset.beforeFirst();
-	        
-	        int i = 0, n = 0;
-	        //ArrayList<String> arrayList = new ArrayList<String>(); 
-	
-	        while (resultset.next()) {              
-	        	HashMap<String,Object> row = new HashMap<>(columns);
+            //logger.debug("MYSQL rows2 count: " + count);
+            //resultset.beforeFirst();
+
+            int i = 0, n = 0;
+            //ArrayList<String> arrayList = new ArrayList<String>();
+
+            while (resultset.next()) {
+                HashMap<String,Object> row = new HashMap<>(columns);
 	            for(int i1=1; i1<=columns; ++i1) {
-	            	logger.debug("DB SQL getColumnLabel: " + md.getColumnLabel(i1)); 
-	            	logger.debug("DB SQL getObject: " + resultset.getObject(i1)); 
-	                row.put(md.getColumnLabel(i1),resultset.getObject(i1));
+                    logger.debug("DB SQL getColumnLabel: " + md.getColumnLabel(i1));
+                    logger.debug("DB SQL getObject: " + resultset.getObject(i1));
+                    row.put(md.getColumnLabel(i1),resultset.getObject(i1));
 	            }
-	            list.add(row);                 
-	        }
-	        
-	        return list;
-	        
-		} catch (SQLException e) {
+                list.add(row);
+            }
+
+            return list;
+
+        } catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			
-			return null;
+
+            return null;
 
 		} finally {
 
-		}
+        }
+}
+
+
+    public enum PersistentEventSeverity {
+        OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;
+
+        public static PersistentEventSeverity fromValue(String v) {
+            return valueOf(v);
+        }
+
+        public String value() {
+            return name();
+        }
 	}
 
 }
