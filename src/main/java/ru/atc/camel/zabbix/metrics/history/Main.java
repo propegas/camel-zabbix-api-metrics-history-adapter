@@ -1,18 +1,6 @@
 package ru.atc.camel.zabbix.metrics.history;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Properties;
-
-//import java.io.File;
-import javax.jms.ConnectionFactory;
-
-//import javax.sql.DataSource;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
-//import org.apache.camel.CamelContext;
-//import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.Processor;
@@ -23,20 +11,29 @@ import org.apache.camel.component.properties.PropertiesComponent;
 import org.apache.camel.component.sql.SqlComponent;
 import org.apache.camel.model.dataformat.JsonDataFormat;
 import org.apache.camel.model.dataformat.JsonLibrary;
-//import org.apache.camel.spring.SpringCamelContext;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.at_consulting.itsm.event.Event;
+
+import javax.jms.ConnectionFactory;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
+//import java.io.File;
+//import javax.sql.DataSource;
+//import org.apache.camel.CamelContext;
+//import org.apache.camel.Endpoint;
+//import org.apache.camel.spring.SpringCamelContext;
 //import org.springframework.context.ApplicationContext;
 //import org.springframework.context.support.ClassPathXmlApplicationContext;
-
 //import ru.at_consulting.itsm.device.Device;
 //import org.apache.camel.processor.idempotent.FileIdempotentRepository;
-import ru.at_consulting.itsm.event.Event;
 
 public class Main {
 	
-	private static Logger logger = LoggerFactory.getLogger(Main.class);
 	public static String activemq_port = null;
 	public static String activemq_ip = null;
 	public static String sql_ip = null;
@@ -44,6 +41,8 @@ public class Main {
 	public static String sql_user = null;
 	public static String sql_password = null;
 	public static String usejms = null;
+	private static Logger logger = LoggerFactory.getLogger(Main.class);
+
 	public static void main(String[] args) throws Exception {
 		
 		logger.info("Starting Custom Apache Camel component example");
@@ -200,8 +199,8 @@ public class Main {
 		    		.choice()
 					.when(header("queueName").isEqualTo("Metrics"))
 						//.to("sql:{{sql.insertMetric}}?dataSource=dataSource")
-						.log(LoggingLevel.DEBUG, "**** use table: ${header.Table}")
-						.log(LoggingLevel.DEBUG, "**** use query: {{sql.insertMetricHistory}}")
+						//.log(LoggingLevel.DEBUG, "**** use table: ${header.Table}")
+						//.log(LoggingLevel.DEBUG, "**** use query: {{sql.insertMetricHistory}}")
 						/*
 						.choice()
 

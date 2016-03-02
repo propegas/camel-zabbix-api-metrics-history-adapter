@@ -200,8 +200,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
 
 			// get itemids from DB
-			String[] allitemids = getAllItemsIdFromDB();
-			
+            Object[] allitems = getAllItemsIdFromDB();
+            String[] allitemids = (String[]) allitems[0];
+            HashMap metricsMap = (HashMap) allitems[1];
+
 			/*
 			 * History object types to return. 
 
@@ -265,29 +267,28 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 					lastclockfinal = lastclock;
 			}
 			//}
-			
-			processSqlItemsToExchange(intItemsList, "INT");
+
+            processSqlItemsToExchange(intItemsList, "INT", metricsMap);
             if (intItemsList != null) {
                 logger.info("Sended INT Metrics: " + intItemsList.size());
             }
-            processSqlItemsToExchange(floatItemsList, "FLOAT");
+            processSqlItemsToExchange(floatItemsList, "FLOAT", metricsMap);
             if (floatItemsList != null) {
                 logger.info("Sended FLOAT Metrics: " + floatItemsList.size());
             }
-            processSqlItemsToExchange(strItemsList, "STR");
+            processSqlItemsToExchange(strItemsList, "STR", metricsMap);
             if (strItemsList != null) {
                 logger.info("Sended STR Metrics: " + strItemsList.size());
             }
-            processSqlItemsToExchange(textItemsList, "TEXT");
+            processSqlItemsToExchange(textItemsList, "TEXT", metricsMap);
             if (textItemsList != null) {
                 logger.info("Sended TEXT Metrics: " + textItemsList.size());
             }
-            processSqlItemsToExchange(logItemsList, "LOG");
+            processSqlItemsToExchange(logItemsList, "LOG", metricsMap);
             if (logItemsList != null) {
                 logger.info("Sended LOG Metrics: " + logItemsList.size());
             }
 
-			
 			// save last received clock from zabbix to DB
             if (!tilltimeToZabbix.equals(""))
                 lastclockfinal = Integer.parseInt(tilltimeToZabbix);
@@ -299,9 +300,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			Map<String, Object> answer = new HashMap<>();
 		    //answer.put("timestamp", (long) Integer.parseInt(lastpolltime));
 			answer.put("timestamp", lastclockfinal);
-			answer.put("source", endpoint.getConfiguration().getZabbixapiurl());
-			
-			Exchange exchange = getEndpoint().createExchange();
+            answer.put("source", String.format("%s:%s",
+                    endpoint.getConfiguration().getSource(),
+                    endpoint.getConfiguration().getZabbixapiurl()));
+
+            Exchange exchange = getEndpoint().createExchange();
 			exchange.getIn().setHeader("queueName", "UpdateLastPoll");
 			exchange.getIn().setBody(answer);
 			
@@ -343,17 +346,17 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		return 1;
 	}
 
-    private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type){
+    private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type, HashMap metricsMap) {
 
         logger.info("Create Exchange containers for " +type +" history metrics...");
         //int batchRowCount = 0;
-        String sqlPrefixPart = "insert into history_" + type.toLowerCase() +" (itemid, value, timestamp) values ";
+        String sqlPrefixPart = "insert into history_" + type.toLowerCase() + " ( metricid, value, timestamp) values ";
         String sql= "";
 
         for (int i = 0; i < (itemsList != null ? itemsList.size() : 0); i++) {
 
             sql = sql + String.format(" (%s, '%s', to_timestamp('%s')),",
-                    itemsList.get(i).get("itemid"),
+                    metricsMap.get(itemsList.get(i).get("itemid").toString()),
                     itemsList.get(i).get("value"),
                     itemsList.get(i).get("timestamp"));
 
@@ -399,7 +402,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     }
 
-	private String[] getAllItemsIdFromDB() throws Throwable {
+    private Object[] getAllItemsIdFromDB() throws Throwable {
 
 		String [] itemids = new String[0];
 
@@ -413,10 +416,12 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	    try {
 	    	
 	    	con = ds.getConnection();
-	    	
-			pstmt = con.prepareStatement("select itemid from metrics;");
-						
-			logger.debug("DB query: " +  pstmt.toString()); 
+
+            pstmt = con.prepareStatement("SELECT id,itemid FROM metrics WHERE source = ?;");
+
+            pstmt.setString(1, endpoint.getConfiguration().getSource());
+
+            logger.debug("DB query: " +  pstmt.toString());
 			resultset = pstmt.executeQuery();
 			logger.debug(resultset.getMetaData().getColumnLabel(1) );
 			//resultset.next();
@@ -428,20 +433,24 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			
 			//listc.toArray(itemids);
 
-			if (listc != null) {
+            // map itemid => metricid
+            Map metricsMap = new HashMap();
+            if (listc != null) {
 				itemids= new String[listc.size()] ;
 				for(int i = 0; i < listc.size(); i++) {
                     //itemids[i] = items.getJSONObject(i).getString("itemid");
                     itemids[i] = listc.get(i).get("itemid").toString();
-                    logger.debug("Found ItemID in DB: " + i + ": " + itemids[i]);
+                    int metricid = (int) listc.get(i).get("id");
+                    metricsMap.put(itemids[i], metricid);
+                    logger.debug("Found ItemID in DB: " + i + ": " + itemids[i] + ", metricid: " + metricid);
                 }
 			}
 
 			//i++;
-				
-			
-			
-			//logger.debug("Get last clock from DB: " +  lastclock); 
+            logger.debug("MetricsHashMap: " + metricsMap.toString());
+
+
+            //logger.debug("Get last clock from DB: " +  lastclock);
 			/*
 			for(int i = 0; i < itemids.length; i++) {
 				//itemids[i] = items.getJSONObject(i).getString("itemid");
@@ -452,10 +461,14 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 	        pstmt.close();
 
 			con.close();
-    	
-	        return itemids;
-    	
-	    } catch (SQLException e) {
+
+            Object[] array = new Object[2];
+            array[0] = itemids;
+            array[1] = metricsMap;
+
+            return array;
+
+        } catch (SQLException e) {
 			// TODO Auto-generated catch block
 			//e.printStackTrace();
 			logger.error( String.format("Error while SQL execution: %s ", e));
@@ -498,21 +511,54 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 					+ "where source = ?");
 	                   // +" LIMIT ?;");
 	        //pstmt.setString(1, "");
-	        pstmt.setString(1, endpoint.getConfiguration().getZabbixapiurl());
-						
-			logger.debug("DB query: " +  pstmt.toString()); 
-			resultset = pstmt.executeQuery();
-			resultset.next();
-			
-			lastclock = resultset.getInt("lastclock");
-			logger.info("Received saved last clock from DB: " +  lastclock); 
-			
-			resultset.close();
-	        pstmt.close();
+            pstmt.setString(1, String.format("%s:%s",
+                    endpoint.getConfiguration().getSource(),
+                    endpoint.getConfiguration().getZabbixapiurl()));
 
-			con.close();
-    	
-    	return lastclock;
+            logger.debug("DB query: " +  pstmt.toString());
+			resultset = pstmt.executeQuery();
+            if (resultset == null || !resultset.next()) {
+
+                if (resultset != null) {
+                    resultset.close();
+                }
+                pstmt.close();
+
+                lastclock = System.currentTimeMillis() / 1000;
+
+                // new insert
+                String insertLastClockSql = String.format("insert into metrics_lastpoll " +
+                                " (lastclock, source) VALUES (to_timestamp(%d), '%s:%s')",
+                        lastclock,
+                        endpoint.getConfiguration().getSource(),
+                        endpoint.getConfiguration().getZabbixapiurl());
+
+                pstmt = con.prepareStatement(insertLastClockSql);
+                logger.debug("Inserting new lastclock SQL: " + insertLastClockSql);
+                resultset = pstmt.executeQuery();
+
+                logger.info("No lastclock records found. Insert new last clock: " + lastclock);
+
+                if (resultset != null) {
+                    resultset.close();
+                }
+                pstmt.close();
+
+                con.close();
+
+                return lastclock;
+            } else {
+
+                lastclock = resultset.getInt("lastclock");
+                logger.info("Received saved last clock from DB: " + lastclock);
+
+                resultset.close();
+                pstmt.close();
+
+                con.close();
+                return lastclock;
+            }
+
 
         } catch (SQLException e) {
             // TODO Auto-generated catch block
@@ -583,8 +629,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		return lastclock;
 	}
 
-	private List<Map<String, Object>> getHistoryByItems(DefaultZabbixApi zabbixApi, String[] allitemids, 
-				String time_from, String time_till, int historytype) {
+    private List<Map<String, Object>> getHistoryByItems(DefaultZabbixApi zabbixApi, String[] allitemids,
+                                                        String time_from, String time_till, int historytype) {
 
         String limitElements = endpoint.getConfiguration().getZabbixMaxElementsLimit();
 		
