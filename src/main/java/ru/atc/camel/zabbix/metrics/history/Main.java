@@ -11,7 +11,7 @@ import org.apache.camel.component.properties.PropertiesComponent;
 import org.apache.camel.component.sql.SqlComponent;
 import org.apache.camel.model.dataformat.JsonDataFormat;
 import org.apache.camel.model.dataformat.JsonLibrary;
-import org.apache.commons.dbcp.BasicDataSource;
+import org.apache.commons.dbcp2.BasicDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.at_consulting.itsm.event.Event;
@@ -20,6 +20,7 @@ import javax.jms.ConnectionFactory;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 import java.util.Properties;
 
 //import java.io.File;
@@ -57,19 +58,7 @@ public class Main {
 			sql_password = (String)args[5];
 		}
 		*/
-		if (activemq_port == null || activemq_port == "" )
-			activemq_port = "61616";
-		if (activemq_ip == null || activemq_ip == "" )
-			activemq_ip = "172.20.19.195";
-		if (sql_ip == null || sql_ip == "" )
-			sql_ip = "192.168.157.73";
-		if (sql_database == null || sql_database == "" )
-			sql_database = "monitoring";
-		if (sql_user == null || sql_user == "" )
-			sql_user = "postgres";
-		if (sql_password == null || sql_password == "" )
-			sql_password = "";
-		
+
 		
 		// get Properties from file
 		Properties prop = new Properties();
@@ -87,7 +76,7 @@ public class Main {
 			System.out.println(prop.getProperty("sql_database"));
 			System.out.println(prop.getProperty("sql_user"));
 			System.out.println(prop.getProperty("sql_password"));
-			
+
 			sql_ip = prop.getProperty("sql_ip");
 			sql_database = prop.getProperty("sql_database");
 			sql_user = prop.getProperty("sql_user");
@@ -109,19 +98,20 @@ public class Main {
 		}
 		
 		//System.exit(0);
-		
-		if (activemq_port == null || activemq_port == "" )
+
+		if (activemq_port == null || Objects.equals(activemq_port, ""))
 			activemq_port = "61616";
-		if (activemq_ip == null || activemq_ip == "" )
+		if (activemq_ip == null || Objects.equals(activemq_ip, ""))
 			activemq_ip = "172.20.19.195";
-		if (sql_ip == null || sql_ip == "" )
+		if (sql_ip == null || Objects.equals(sql_ip, ""))
 			sql_ip = "192.168.157.73";
-		if (sql_database == null || sql_database == "" )
+		if (sql_database == null || Objects.equals(sql_database, ""))
 			sql_database = "monitoring";
-		if (sql_user == null || sql_user == "" )
+		if (sql_user == null || Objects.equals(sql_user, ""))
 			sql_user = "postgres";
-		if (sql_password == null || sql_password == "" )
+		if (sql_password == null || Objects.equals(sql_password, ""))
 			sql_password = "";
+
 
 		logger.info("activemq_ip: " + activemq_ip);
 		logger.info("activemq_port: " + activemq_port);
@@ -284,8 +274,10 @@ public class Main {
         ds.setUsername( sql_user );
         ds.setPassword( sql_password );
         ds.setUrl(url);
-              
-        return ds;
+		ds.setMaxTotal(10);
+		ds.setMaxIdle(10);
+
+		return ds;
     }
     
 }

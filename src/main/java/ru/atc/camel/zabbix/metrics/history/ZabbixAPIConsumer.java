@@ -17,7 +17,7 @@ import io.github.hengyunabc.zabbix.api.RequestBuilder;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
-import org.apache.commons.dbcp.BasicDataSource;
+import org.apache.commons.dbcp2.BasicDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.at_consulting.itsm.event.Event;
@@ -194,7 +194,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             if (currentTimeStamp - Integer.parseInt(lastpolltimetozab) > maxDiffTime){
                 tilltimeToZabbix = Integer.parseInt(lastpolltimetozab) + maxDiffTime + "";
                 logger.info("**** Different between saved and current Zabbix time more than "
-                        + maxDiffTime / 3600 + " hours");
+                        + (float) maxDiffTime / 3600 + " hours");
                 logger.info(String.format("**** Set 'till_time' property: %s", tilltimeToZabbix));
             }
 
@@ -203,6 +203,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             Object[] allitems = getAllItemsIdFromDB();
             String[] allitemids = (String[]) allitems[0];
             HashMap metricsMap = (HashMap) allitems[1];
+
+            logger.info(String.format("**** Received %d metrics from DB", allitems.length));
 
 			/*
 			 * History object types to return. 
@@ -289,33 +291,37 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 logger.info("Sended LOG Metrics: " + logItemsList.size());
             }
 
-			// save last received clock from zabbix to DB
-            if (!tilltimeToZabbix.equals(""))
-                lastclockfinal = Integer.parseInt(tilltimeToZabbix);
-			
-			logger.info(String.format("Save last clock timestamp: %s", lastclockfinal + 1 ));
-			
-			endpoint.getConfiguration().setLastpolltime(lastclockfinal + 1 + "");
-			
-			Map<String, Object> answer = new HashMap<>();
-		    //answer.put("timestamp", (long) Integer.parseInt(lastpolltime));
-			answer.put("timestamp", lastclockfinal);
-            answer.put("source", String.format("%s:%s",
-                    endpoint.getConfiguration().getSource(),
-                    endpoint.getConfiguration().getZabbixapiurl()));
 
-            Exchange exchange = getEndpoint().createExchange();
-			exchange.getIn().setHeader("queueName", "UpdateLastPoll");
-			exchange.getIn().setBody(answer);
-			
-			try {
-				getProcessor().process(exchange);
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
-		} catch (NullPointerException e) {
+			// save last received clock from zabbix to DB
+            // if number of history rows > 0
+            if (listFinal.size() > 0) {
+                if (!tilltimeToZabbix.equals(""))
+                    lastclockfinal = Integer.parseInt(tilltimeToZabbix);
+
+                logger.info(String.format("Save last clock timestamp: %s", lastclockfinal + 1));
+
+                endpoint.getConfiguration().setLastpolltime(lastclockfinal + 1 + "");
+
+                Map<String, Object> answer = new HashMap<>();
+                //answer.put("timestamp", (long) Integer.parseInt(lastpolltime));
+                answer.put("timestamp", lastclockfinal);
+                answer.put("source", String.format("%s:%s",
+                        endpoint.getConfiguration().getSource(),
+                        endpoint.getConfiguration().getZabbixapiurl()));
+
+                Exchange exchange = getEndpoint().createExchange();
+                exchange.getIn().setHeader("queueName", "UpdateLastPoll");
+                exchange.getIn().setBody(answer);
+
+                try {
+                    getProcessor().process(exchange);
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }
+
+        } catch (NullPointerException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 			logger.error(String.format("Error while get Metrics History from API: %s ", e));
@@ -460,7 +466,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 			resultset.close();
 	        pstmt.close();
 
-			con.close();
+            logger.info(" **** Closing DB connections for getting metrics  *****");
+            con.close();
 
             Object[] array = new Object[2];
             array[0] = itemids;
@@ -555,6 +562,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 resultset.close();
                 pstmt.close();
 
+                logger.info(" **** Closing DB connections for getting last clock  *****");
                 con.close();
                 return lastclock;
             }
@@ -778,7 +786,6 @@ private List<HashMap<String, Object>> convertRStoList(ResultSet resultset) throw
             //logger.debug("MYSQL rows2 count: " + count);
             //resultset.beforeFirst();
 
-            int i = 0, n = 0;
             //ArrayList<String> arrayList = new ArrayList<String>();
 
             while (resultset.next()) {
