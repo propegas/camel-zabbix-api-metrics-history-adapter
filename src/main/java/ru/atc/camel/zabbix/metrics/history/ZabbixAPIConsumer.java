@@ -204,7 +204,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             String[] allitemids = (String[]) allitems[0];
             HashMap metricsMap = (HashMap) allitems[1];
 
-            logger.info(String.format("**** Received %d metrics from DB", allitems.length));
+            logger.info(String.format("**** Received %d metrics from DB", allitemids.length));
 
 			/*
 			 * History object types to return. 
@@ -354,7 +354,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type, HashMap metricsMap) {
 
-        logger.info("Create Exchange containers for " +type +" history metrics...");
+        logger.info("Create Exchange containers for " + type + " history metrics...");
         //int batchRowCount = 0;
         String sqlPrefixPart = "insert into history_" + type.toLowerCase() + " ( metricid, value, timestamp) values ";
         String sql= "";
@@ -413,8 +413,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 		String [] itemids = new String[0];
 
 		BasicDataSource ds = Main.setupDataSource();
-		
-		Connection con = null; 
+        //logger.info(" **** getMaxConnLifetimeMillis: ***** " + ds.getMaxConnLifetimeMillis() );
+        //logger.info(" **** getMaxIdle:  ***** " + ds.getMaxIdle() );
+
+        Connection con = null;
 	    PreparedStatement pstmt;
 	    ResultSet resultset;
 	    

@@ -270,14 +270,29 @@ public class Main {
 				sql_ip, "5432",	sql_database);
 		
         BasicDataSource ds = new BasicDataSource();
+        ds.setMaxTotal(10);
+        //ds.setMax
+        ds.setMaxIdle(10);
+        ds.setSoftMinEvictableIdleTimeMillis(300000);
+        ds.setMaxConnLifetimeMillis(300000);
+        ds.setLogExpiredConnections(true);
+        //ds.setLogWriter(logger);
+        ds.setDefaultAutoCommit(true);
+        ds.setEnableAutoCommitOnReturn(true);
+        ds.setRemoveAbandonedOnBorrow(true);
+        ds.setRemoveAbandonedOnMaintenance(true);
+        ds.setRemoveAbandonedTimeout(300);
+        ds.setLogAbandoned(true);
+
+        //ds.idle
+        //ds.setMaxOpenPreparedStatements();
         ds.setDriverClassName("org.postgresql.Driver");
         ds.setUsername( sql_user );
         ds.setPassword( sql_password );
         ds.setUrl(url);
-		ds.setMaxTotal(10);
-		ds.setMaxIdle(10);
 
-		return ds;
+
+        return ds;
     }
     
 }
