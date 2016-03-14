@@ -38,7 +38,8 @@ public class Main {
 	public static String activemq_port = null;
 	public static String activemq_ip = null;
 	public static String sql_ip = null;
-	public static String sql_database = null;
+    public static String sql_port = null;
+    public static String sql_database = null;
 	public static String sql_user = null;
 	public static String sql_password = null;
 	public static String usejms = null;
@@ -79,7 +80,8 @@ public class Main {
 
 			sql_ip = prop.getProperty("sql_ip");
 			sql_database = prop.getProperty("sql_database");
-			sql_user = prop.getProperty("sql_user");
+            sql_port = prop.getProperty("sql_port");
+            sql_user = prop.getProperty("sql_user");
 			sql_password = prop.getProperty("sql_password");
 			usejms = prop.getProperty("usejms");
 			activemq_ip = prop.getProperty("activemq_ip");
@@ -105,7 +107,9 @@ public class Main {
 			activemq_ip = "172.20.19.195";
 		if (sql_ip == null || Objects.equals(sql_ip, ""))
 			sql_ip = "192.168.157.73";
-		if (sql_database == null || Objects.equals(sql_database, ""))
+        if (sql_port == null || Objects.equals(sql_port, ""))
+            sql_port = "5432";
+        if (sql_database == null || Objects.equals(sql_database, ""))
 			sql_database = "monitoring";
 		if (sql_user == null || Objects.equals(sql_user, ""))
 			sql_user = "postgres";
@@ -267,8 +271,8 @@ public class Main {
 	public static BasicDataSource setupDataSource() {
 		
 		String url = String.format("jdbc:postgresql://%s:%s/%s",
-				sql_ip, "5432",	sql_database);
-		
+                sql_ip, sql_port, sql_database);
+
         BasicDataSource ds = new BasicDataSource();
         ds.setMaxTotal(10);
         //ds.setMax
