@@ -35,6 +35,8 @@ public class ZabbixAPIConfiguration {
 	private int lastid = 0;
 	
     private int delay = 720;
+
+	private String dayInPast;
   
 	public int getDelay() {
 		return delay;
@@ -155,5 +157,13 @@ public class ZabbixAPIConfiguration {
 
 	public void setMaxDiffTime(int maxDiffTime) {
 		this.maxDiffTime = maxDiffTime;
+	}
+
+	public String getDayInPast() {
+		return dayInPast;
+	}
+
+	public void setDayInPast(String dayInPast) {
+		this.dayInPast = dayInPast;
 	}
 }
