@@ -61,22 +61,30 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     private static Logger logger = LoggerFactory.getLogger(Main.class);
 
-    private static ZabbixAPIEndpoint endpoint;
+    private static Logger logger2 = LoggerFactory.getLogger(Main.class);
+
+    private ZabbixAPIEndpoint endpoint;
+
+    private BasicDataSource ds = Main.setupDataSource();
 
     public ZabbixAPIConsumer(ZabbixAPIEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
-        ZabbixAPIConsumer.endpoint = endpoint;
+        this.endpoint = endpoint;
 
         // this.afterPoll();
         this.setTimeUnit(TimeUnit.MINUTES);
         this.setInitialDelay(0);
+        //this.setUseFixedDelay();
+        logger.info("This: " + this);
+        logger.info("Endpoint: " + endpoint);
+        logger.info("Set delay: " + endpoint.getConfiguration().getDelay());
         //ScheduledExecutorService scheduledExecutorService;
         //scheduledExecutorService
         //this.setScheduledExecutorService(scheduledExecutorService);
         this.setDelay(endpoint.getConfiguration().getDelay());
     }
 
-    public static void genHeartbeatMessage(Exchange exchange) {
+    public static void genHeartbeatMessage(Exchange exchange, String source) {
         // TODO Auto-generated method stub
         long timestamp = System.currentTimeMillis();
         timestamp = timestamp / 1000;
@@ -87,7 +95,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         genevent.setObject("HEARTBEAT");
         genevent.setSeverity(PersistentEventSeverity.OK.name());
         genevent.setTimestamp(timestamp);
-        genevent.setEventsource(String.format("%s", endpoint.getConfiguration().getAdaptername()));
+        //genevent.setEventsource(String.format("%s", endpoint.getConfiguration().getAdaptername()));
+        genevent.setEventsource(String.format("%s", source));
 
         logger.info(" **** Create Exchange for Heartbeat Message container");
         // Exchange exchange = getEndpoint().createExchange();
@@ -96,7 +105,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         exchange.getIn().setHeader("Timestamp", timestamp);
         exchange.getIn().setHeader("queueName", "Heartbeats");
         exchange.getIn().setHeader("Type", "Heartbeats");
-        exchange.getIn().setHeader("Source", endpoint.getConfiguration().getAdaptername());
+        //exchange.getIn().setHeader("Source", endpoint.getConfiguration().getAdaptername());
+        exchange.getIn().setHeader("Source", source);
 
         try {
             // Processor processor = getProcessor();
@@ -116,8 +126,279 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         if (operationPath.equals("metricshistory"))
             return processSearchDevices();
 
+        if (operationPath.equals("deletehistory"))
+            return processDeleteHistory();
+
         // only one operation implemented for now !
         throw new IllegalArgumentException("Incorrect operation: " + operationPath);
+    }
+
+    private int processDeleteHistory() {
+
+        //BasicDataSource ds = Main.setupDataSource();
+
+        long currentTimeStamp = System.currentTimeMillis() / 1000;
+        List<HashMap<String, Object>> summirizedHistoryRows = new ArrayList<>();
+
+        logger.info(String.format(" **** [%s] [%s] ...",
+                endpoint.getOperationPath(),
+                endpoint.getStatus()));
+
+        try {
+            logger.info(String.format(" **** [%s], [%d] [%d] ...",
+                    ds,
+                    ds.getNumActive(),
+                    ds.getNumIdle()));
+
+            processSummarizeOnTable("history_float", currentTimeStamp, summirizedHistoryRows);
+
+            processSummarizeOnTable("history_int", currentTimeStamp, summirizedHistoryRows);
+
+            /*
+            try {
+                deleteOldHistory("history_str", currentTimeStamp);
+            } catch (SQLException e) {
+                e.printStackTrace();
+
+                throw new RuntimeException(String.format(
+                        "Error while deleting Summarized %s execution: %s ", "history_str", e));
+
+                //logger.error(String.format("Error while deleting Summarized history_float execution: %s ", e));
+
+            }
+
+            try {
+                deleteOldHistory("history_text", currentTimeStamp);
+            } catch (SQLException e) {
+                e.printStackTrace();
+
+                throw new RuntimeException(String.format(
+                        "Error while deleting Summarized %s execution: %s ", "history_text", e));
+
+                //logger.error(String.format("Error while deleting Summarized history_float execution: %s ", e));
+
+            }
+
+            try {
+                deleteOldHistory("history_log", currentTimeStamp);
+            } catch (SQLException e) {
+                e.printStackTrace();
+
+                throw new RuntimeException(String.format(
+                        "Error while deleting Summarized %s execution: %s ", "history_log", e));
+
+                //logger.error(String.format("Error while deleting Summarized history_float execution: %s ", e));
+
+            }
+            */
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                ds.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        return 1;
+    }
+
+    private void processSummarizeOnTable(String tablename, long currentTimeStamp, List<HashMap<String, Object>> summirizedHistoryRows) {
+        logger.info(String.format(" **** [%s] Try to get Summarized history ...",
+                endpoint.getOperationPath()));
+        try {
+            summirizedHistoryRows = selectOldHistoryByDay(tablename, currentTimeStamp);
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+            logger.error(String.format("[%s] Error while Get Summarized %s execution: %s ",
+                    endpoint.getOperationPath(), tablename, throwable));
+
+        }
+
+        if (summirizedHistoryRows != null && summirizedHistoryRows.size() != 0) {
+            try {
+                deleteOldHistory(tablename, currentTimeStamp);
+            } catch (SQLException e) {
+                e.printStackTrace();
+                throw new RuntimeException(String.format(
+                        "Error while deleting Summarized %s execution: %s ", tablename, e));
+
+                //logger.error(String.format("Error while deleting Summarized history_float execution: %s ", e));
+
+            }
+
+            logger.info(String.format(" **** [%s] Try to Insert Summarized history to DB...",
+                    endpoint.getOperationPath()));
+            processSqlSummarizedItemsToExchange(summirizedHistoryRows, tablename);
+        }
+    }
+
+    private void deleteOldHistory(String tablename, long currentTimeStamp) throws SQLException {
+        //BasicDataSource ds = Main.setupDataSource();
+
+        logger.info(String.format(" **** [%s], [%d] [%d] ...",
+                ds,
+                ds.getNumActive(),
+                ds.getNumIdle()));
+
+        Connection con = null;
+        PreparedStatement pstmt;
+        ResultSet resultset;
+
+        logger.info(String.format(" **** [%s] Try to delete history that was summarized for  %s ...",
+                endpoint.getOperationPath(), tablename));
+
+        try {
+
+            con = ds.getConnection();
+
+            pstmt = con.prepareStatement(String.format(
+                    "SELECT  \"deleteOldHistory\"('%s', '%d', '%s') as answer;",
+                    tablename, currentTimeStamp, this.endpoint.getConfiguration().getDayInPast()),
+                    ResultSet.TYPE_SCROLL_INSENSITIVE,
+                    ResultSet.CONCUR_UPDATABLE);
+            // +" LIMIT ?;");
+            //pstmt.setString(1, "");
+
+            logger.info(String.format("[%s] DB query: %s", endpoint.getOperationPath(), pstmt.toString()));
+            resultset = pstmt.executeQuery();
+            if (resultset == null || !resultset.isBeforeFirst()) {
+
+                if (resultset != null) {
+                    resultset.close();
+                }
+                pstmt.close();
+                //return null;
+            } else {
+
+                //resultset.first();
+                // List<HashMap<String, Object>> listc;
+                // listc = convertRStoList(resultset);
+
+                // read first line
+                resultset.first();
+                String answer = resultset.getString("answer");
+
+                logger.info(String.format(" **** [%s] Recieved answer: %s ",
+                        endpoint.getOperationPath(), answer));
+
+                resultset.close();
+                pstmt.close();
+
+                logger.info(String.format(" **** [%s] Closing DB connections for getting history  *****",
+                        endpoint.getOperationPath()));
+                con.close();
+                //return listc;
+                //return lastclock;
+            }
+
+        } catch (SQLException e) {
+            // TODO Auto-generated catch block
+            //e.printStackTrace();
+            logger.error(String.format("[%s] Error while SQL execution: %s ", endpoint.getOperationPath(), e));
+
+            if (con != null) con.close();
+
+            //return null;
+            throw e;
+
+        } catch (Throwable e) { //send error message to the same queue
+            // TODO Auto-generated catch block
+            logger.error(String.format("[%s] Error while execution: %s ",
+                    endpoint.getOperationPath(), e));
+            //genErrorMessage(e.getMessage());
+            // 0;
+            throw e;
+        } finally {
+            if (con != null) con.close();
+            //return null;
+            //return list;
+        }
+
+
+    }
+
+    private List<HashMap<String, Object>> selectOldHistoryByDay(String tablename, long currentTimeStamp) throws SQLException, Throwable {
+
+        //BasicDataSource ds = Main.setupDataSource();
+
+        logger.info(String.format(" **** [%s], [%d] [%d] ...",
+                ds,
+                ds.getNumActive(),
+                ds.getNumIdle()));
+
+        Connection con = null;
+        PreparedStatement pstmt;
+        ResultSet resultset;
+
+        logger.info(String.format(" **** [%s] Try to get history for  %s ...",
+                endpoint.getOperationPath(), tablename));
+        try {
+
+            con = ds.getConnection();
+
+            pstmt = con.prepareStatement(String.format(
+                    "SELECT * FROM selectOldHistory('%s', '%d', '%s');",
+                    tablename, currentTimeStamp,
+                    this.endpoint.getConfiguration().getDayInPast()));
+            // +" LIMIT ?;");
+            //pstmt.setString(1, "");
+
+            logger.info(String.format("[%s] DB query: %s",
+                    endpoint.getOperationPath(), pstmt.toString()));
+            resultset = pstmt.executeQuery();
+            if (resultset == null || !resultset.isBeforeFirst()) {
+
+                if (resultset != null) {
+                    resultset.close();
+                }
+                pstmt.close();
+                return null;
+            } else {
+
+                List<HashMap<String, Object>> listc;
+                listc = convertRStoList(resultset);
+
+                logger.info(String.format(" **** [%s] Recieved rows for %s: %d",
+                        endpoint.getOperationPath(), tablename, listc != null ? listc.size() : 0));
+
+                resultset.close();
+                pstmt.close();
+
+                logger.info(String.format(" **** [%s] Closing DB connections for getting history  *****",
+                        endpoint.getOperationPath()));
+                con.close();
+                return listc;
+                //return lastclock;
+            }
+
+        } catch (SQLException e) {
+            // TODO Auto-generated catch block
+            //e.printStackTrace();
+            logger.error(String.format("[%s] Error while SQL execution: %s ",
+                    endpoint.getOperationPath(), e));
+
+            if (con != null) con.close();
+
+            //return null;
+            throw e;
+
+        } catch (Throwable e) { //send error message to the same queue
+            // TODO Auto-generated catch block
+            logger.error(String.format("[%s] Error while execution: %s ",
+                    endpoint.getOperationPath(), e));
+            //genErrorMessage(e.getMessage());
+            // 0;
+            throw e;
+        } finally {
+            if (con != null) con.close();
+            //return null;
+            //return list;
+        }
+
+
     }
 
     @Override
@@ -128,7 +409,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         // throw new IllegalArgumentException("Incorrect operation: ");
 
         // send HEARTBEAT
-        genHeartbeatMessage(getEndpoint().createExchange());
+        genHeartbeatMessage(getEndpoint().createExchange(), this.endpoint.getConfiguration().getAdaptername());
 
         return timeout;
     }
@@ -136,6 +417,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
     private int processSearchDevices() throws Exception {
 
         // Long timestamp;
+
+        logger.info(String.format(" **** [%s], [%d] [%d] ...",
+                ds,
+                ds.getNumActive(),
+                ds.getNumIdle()));
 
         List<Map<String, Object>> intItemsList;
         List<Map<String, Object>> floatItemsList;
@@ -203,6 +489,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             String tilltimeToZabbix = "";
             // if different between saved and current Zabbix time more than 3 hours
             int maxDiffTime = endpoint.getConfiguration().getMaxDiffTime();
+            logger.info("**** currentTimeStamp: " + currentTimeStamp);
             if (currentTimeStamp - Integer.parseInt(lastpolltimetozab) > maxDiffTime) {
                 tilltimeToZabbix = Integer.parseInt(lastpolltimetozab) + maxDiffTime + "";
                 logger.info("**** Different between saved and current Zabbix time more than "
@@ -383,45 +670,87 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             if (mod == 0 || (i == itemsList.size() - 1)) {
                 //batchRowCount++;
 
-                //logger.info("batchRowCount : " + batchRowCount);
-
-                String fullSql = String.format("%s %s",
-                        sqlPrefixPart,
-                        sql.substring(0, sql.length() - 1));
-                logger.debug("fullSql: " + fullSql);
-
-                int rowCount = mod == 0 ? endpoint.getConfiguration().getBatchRowCount() : mod;
-
-                logger.debug("Create Batch Insert SQL Exchange container: " + rowCount + " history rows");
-                Exchange exchange = getEndpoint().createExchange();
-                exchange.getIn().setBody(fullSql);
-                exchange.getIn().setHeader("queueName", "Metrics");
-
-                try {
-                    getProcessor().process(exchange);
-                    logger.info("Inserted " + rowCount + " history rows to database");
-                    //return true;
-                } catch (Exception e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                    logger.error("Error while Insert items to database");
-                    //return false;
-                }
+                processBatchSQLExchange(sqlPrefixPart, sql, mod);
 
                 // reset batch count
                 sql = "";
-                //batchRowCount = 0;
             }
         }
 
 
     }
 
+    private void processSqlSummarizedItemsToExchange(List<HashMap<String, Object>> itemsList, String tablename) {
+
+        logger.info(String.format("[%s] Create Exchange containers for %s summarized history metrics...",
+                endpoint.getOperationPath(), tablename));
+        //int batchRowCount = 0;
+        String sqlPrefixPart = "insert into " + tablename.toLowerCase() + " ( metricid, value, timestamp) values ";
+        String sql = "";
+
+        for (int i = 0; i < (itemsList != null ? itemsList.size() : 0); i++) {
+
+            sql = sql + String.format(" (%s, '%s', '%s'),",
+                    itemsList.get(i).get("metricid").toString(),
+                    itemsList.get(i).get("value"),
+                    itemsList.get(i).get("timestamp"));
+
+            //logger.info("i : " + i + " / " + itemsList.size());
+
+            int mod = (i + 1) % endpoint.getConfiguration().getBatchRowCount();
+
+            if (mod == 0 || (i == itemsList.size() - 1)) {
+                //batchRowCount++;
+
+                //logger.info("batchRowCount : " + i);
+                processBatchSQLExchange(sqlPrefixPart, sql, mod);
+                sql = "";
+
+            }
+        }
+
+
+    }
+
+    private void processBatchSQLExchange(String sqlPrefixPart, String sql, int mod) {
+
+        String fullSql = String.format("%s %s",
+                sqlPrefixPart,
+                sql.substring(0, sql.length() - 1));
+        logger.debug(String.format("[%s] fullSql: %s",
+                endpoint.getOperationPath(), fullSql));
+
+        int rowCount = mod == 0 ? endpoint.getConfiguration().getBatchRowCount() : mod;
+
+        logger.debug(String.format("[%s] Create Batch Insert SQL Exchange container: %d history rows",
+                endpoint.getOperationPath(), rowCount));
+        Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setBody(fullSql);
+        exchange.getIn().setHeader("queueName", "Metrics");
+
+        try {
+            getProcessor().process(exchange);
+            logger.info(String.format("[%s] Inserted %d history rows to database",
+                    endpoint.getOperationPath(), rowCount));
+            //return true;
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            logger.error(String.format("[%s] Error while Insert items to database%s",
+                    endpoint.getOperationPath()));
+            //return false;
+        }
+
+        // reset batch count
+        sql = "";
+        //batchRowCount = 0;
+    }
+
     private Object[] getAllItemsIdFromDB() throws Throwable {
 
         String[] itemids = new String[0];
 
-        BasicDataSource ds = Main.setupDataSource();
+        //BasicDataSource ds = Main.setupDataSource();
         //logger.info(" **** getMaxConnLifetimeMillis: ***** " + ds.getMaxConnLifetimeMillis() );
         //logger.info(" **** getMaxIdle:  ***** " + ds.getMaxIdle() );
 
@@ -513,7 +842,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
         long lastclock;
 
-        BasicDataSource ds = Main.setupDataSource();
+        //BasicDataSource ds = Main.setupDataSource();
 
         Connection con = null;
         PreparedStatement pstmt;
@@ -535,7 +864,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             logger.debug("DB query: " + pstmt.toString());
             resultset = pstmt.executeQuery();
-            if (resultset == null || !resultset.next()) {
+            if (resultset == null || !resultset.isBeforeFirst()) {
 
                 if (resultset != null) {
                     resultset.close();
@@ -718,7 +1047,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             Object value;
             /*
-			 * Possible values: 
+             * Possible values:
 			0 - float; 
 			1 - string; 
 			2 - log; 
@@ -796,7 +1125,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             int columns = md.getColumnCount();
             //result.getArray(columnIndex)
             //resultset.get
-            logger.debug("DB SQL columns count: " + columns);
+            logger.info("DB SQL columns count: " + columns);
 
             //resultset.last();
             //int count = resultset.getRow();
