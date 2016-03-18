@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="DataSourceManagerImpl" format="xml" hash="3166540653">
+  <component name="DataSourceManagerImpl" format="xml" hash="2404143516">
     <data-source source="LOCAL" name="PostgreSQL - monitoring@192.168.157.73" uuid="ef026927-c00d-4e7c-a95d-3414268326f6">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
       <jdbc-url>jdbc:postgresql://192.168.157.73:5432/monitoring</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="PostgreSQL - correlation@172.20.19.191" uuid="ed3fc12c-02ca-4c37-bb18-ec90ba287619">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://172.20.19.191:5432/correlation</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="PostgreSQL - postgres@localhost" uuid="c9869a65-d2f6-4178-a19a-7cb2486b18f4">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://localhost:5432/postgres</jdbc-url>
     </data-source>
   </component>
 </project>
