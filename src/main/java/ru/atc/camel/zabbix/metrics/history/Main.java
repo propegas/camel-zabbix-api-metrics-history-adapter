@@ -44,7 +44,8 @@ public class Main {
     public static String sql_password = null;
     public static String usejms = null;
     public static String source;
-    public static String onlySummarizeRoute = "false";
+    public static String useSummarizeRoute = "false";
+    public static String useMainRoute = "true";
     public static int maxConnLifetime = 900000;
 
     private static Logger logger = LoggerFactory.getLogger(Main.class);
@@ -91,7 +92,8 @@ public class Main {
             activemq_ip = prop.getProperty("activemq_ip");
             activemq_port = prop.getProperty("activemq_port");
             source = prop.getProperty("source");
-            onlySummarizeRoute = prop.getProperty("onlySummarizeRoute");
+            useSummarizeRoute = prop.getProperty("useSummarizeRoute");
+            useMainRoute = prop.getProperty("useMainRoute");
             maxConnLifetime = Integer.parseInt(prop.getProperty("maxConnLifetime"));
 
         } catch (IOException ex) {
@@ -171,7 +173,6 @@ public class Main {
                             //.choice()
                             .process(new Processor() {
                                 public void process(Exchange exchange) throws Exception {
-                                    // TODO Поставить имя адаптера (source)
                                     ZabbixAPIConsumer.genHeartbeatMessage(exchange, source);
                                 }
                             })
@@ -183,7 +184,7 @@ public class Main {
 
 
                 // get metrics history
-                if (!"true".equals(onlySummarizeRoute)) {
+                if ("true".equals(useMainRoute)) {
                     from("zabbixapi://metricshistory?"
                             + "delay={{delay}}&"
                             + "zabbixapiurl={{zabbixapiurl}}&"
@@ -200,11 +201,47 @@ public class Main {
 
                             .choice()
                             .when(header("queueName").isEqualTo("Metrics"))
+
+                            .to("jdbc:BasicDataSource")
+
+
+                            //.recipientList(simple("sql:insert into ${header.Table} {{sql.insertMetricHistory}}"))
+                            .log(LoggingLevel.DEBUG, "**** Inserted new Batch rows, SQL: ${body} .")
+                            .endChoice()
+                            //.log("*** Metric: ${id} ${header.DeviceId}")
+                            .when(header("queueName").isEqualTo("UpdateLastPoll"))
+                            .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
+                            .otherwise()
+                            .choice()
+                            .when(constant(usejms).isEqualTo("true"))
+                            .marshal(myJson)
+                            .to("activemq:{{eventsqueue}}")
+                            .log(LoggingLevel.ERROR, "*** Error: ${id} ${header.DeviceId}")
+                            .endChoice()
+                            .endChoice()
+                            .end()
+
+                            .log(LoggingLevel.DEBUG, "Sended message: ${id} ");
+                    //.to("activemq:{{devicesqueue}}");
+                }
+
+                // select, summarize and delete all history metrics
+                if ("true".equals(useSummarizeRoute)) {
+                    from("zabbixapi://deletehistory?"
+                            + "delay={{delete_delay}}&"
+                            + "adaptername={{adaptername}}&"
+                            + "source={{source}}&"
+                            + "dayInPast={{dayInPast}}&"
+                            + "batchRowCount={{batchRowCount}}"
+                    )
+
+                            .choice()
+                            .when(header("queueName").isEqualTo("Metrics"))
                             //.to("sql:{{sql.insertMetric}}?dataSource=dataSource")
                             //.log(LoggingLevel.DEBUG, "**** use table: ${header.Table}")
                             //.log(LoggingLevel.DEBUG, "**** use query: {{sql.insertMetricHistory}}")
                         /*
-						.choice()
+                        .choice()
 
 							.when(header("Table").isEqualTo("history_float"))
 								.to("sql:insert into history_float {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
@@ -238,87 +275,8 @@ public class Main {
                             .end()
 
                             .log(LoggingLevel.DEBUG, "Sended message: ${id} ");
-                    //.to("activemq:{{devicesqueue}}");
                 }
 
-                // select, summarize and delete all history metrics
-                from("zabbixapi://deletehistory?"
-                        + "delay={{delete_delay}}&"
-                        + "adaptername={{adaptername}}&"
-                        + "source={{source}}&"
-                        + "dayInPast={{dayInPast}}&"
-                        + "batchRowCount={{batchRowCount}}"
-                )
-
-                        .choice()
-                        .when(header("queueName").isEqualTo("Metrics"))
-                        //.to("sql:{{sql.insertMetric}}?dataSource=dataSource")
-                        //.log(LoggingLevel.DEBUG, "**** use table: ${header.Table}")
-                        //.log(LoggingLevel.DEBUG, "**** use query: {{sql.insertMetricHistory}}")
-                        /*
-                        .choice()
-
-							.when(header("Table").isEqualTo("history_float"))
-								.to("sql:insert into history_float {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_int"))
-								.to("sql:insert into history_int {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_str"))
-								.to("sql:insert into history_str {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_log"))
-								.to("sql:insert into history_log {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_text"))
-								.to("sql:insert into history_text {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-						.end()
-						*/
-                        .to("jdbc:BasicDataSource")
-
-
-                        //.recipientList(simple("sql:insert into ${header.Table} {{sql.insertMetricHistory}}"))
-                        .log(LoggingLevel.DEBUG, "**** Inserted new Batch rows, SQL: ${body} .")
-                        .endChoice()
-                        //.log("*** Metric: ${id} ${header.DeviceId}")
-                        .when(header("queueName").isEqualTo("UpdateLastPoll"))
-                        .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
-                        .otherwise()
-                        .choice()
-                        .when(constant(usejms).isEqualTo("true"))
-                        .marshal(myJson)
-                        .to("activemq:{{eventsqueue}}")
-                        .log(LoggingLevel.ERROR, "*** Error: ${id} ${header.DeviceId}")
-                        .endChoice()
-                        .endChoice()
-                        .end()
-
-                        .log(LoggingLevel.DEBUG, "Sended message: ${id} ");
-
-                // get history for metrics
-				/*
-				from("zabbixapi://metricshistory?"
-		    			+ "delay={{historydelay}}&"
-		    			+ "zabbixapiurl={{zabbixapiurl}}&"
-		    			+ "username={{username}}&"
-		    			+ "password={{password}}&"
-		    			+ "adaptername={{adaptername}}&"
-		    			+ "source={{source}}&"
-		    			+ "zabbix_item_description_pattern={{zabbix_item_description_pattern}}&"
-		    			+ "zabbixip={{zabbixip}}")
-
-		    		.choice()
-					.when(header("queueName").isEqualTo("Metrics"))
-						//.to("sql:{{sql.insertMetric}}?dataSource=dataSource")
-						.to("sql:{{sql.insertMetricHistory}}")
-						.log("**** Inserted new metric ${body[itemid]}")
-						//.log("*** Metric: ${id} ${header.DeviceId}")
-					.otherwise()
-						.marshal(myJson)
-						.to("activemq:{{eventsqueue}}")
-						.log("*** Error: ${id} ${header.DeviceId}")
-					.end()
-					
-		    		.log("${id} ${header.DeviceId} ${header.DeviceType} ");
-		    		//.to("activemq:{{devicesqueue}}");
-				
-				*/
             }
         });
 
