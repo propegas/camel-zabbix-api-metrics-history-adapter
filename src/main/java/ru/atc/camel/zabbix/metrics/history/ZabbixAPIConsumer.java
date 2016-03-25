@@ -65,7 +65,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     private ZabbixAPIEndpoint endpoint;
 
-    private BasicDataSource ds = Main.setupDataSource();
+    private BasicDataSource ds;
 
     public ZabbixAPIConsumer(ZabbixAPIEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
@@ -135,7 +135,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     private int processDeleteHistory() {
 
-        //BasicDataSource ds = Main.setupDataSource();
+        ds = Main.setupDataSource();
 
         long currentTimeStamp = System.currentTimeMillis() / 1000;
         List<HashMap<String, Object>> summirizedHistoryRows = new ArrayList<>();
@@ -232,6 +232,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             logger.info(String.format(" **** [%s] Try to Insert Summarized history to DB...",
                     endpoint.getOperationPath()));
             processSqlSummarizedItemsToExchange(summirizedHistoryRows, tablename);
+        } else {
+            logger.info(String.format(" **** [%s] No rows on period",
+                    endpoint.getOperationPath()));
         }
     }
 
@@ -320,7 +323,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     }
 
-    private List<HashMap<String, Object>> selectOldHistoryByDay(String tablename, long currentTimeStamp) throws SQLException, Throwable {
+    private List<HashMap<String, Object>> selectOldHistoryByDay(String tablename, long currentTimeStamp)
+            throws SQLException, Throwable {
 
         //BasicDataSource ds = Main.setupDataSource();
 
@@ -418,6 +422,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
         // Long timestamp;
 
+        ds = Main.setupDataSource();
+
         logger.info(String.format(" **** [%s], [%d] [%d] ...",
                 ds,
                 ds.getNumActive(),
@@ -475,6 +481,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             long lastclockfromDB = getLastClockFromDB();
             long currentTimeStamp = System.currentTimeMillis() / 1000;
 
+
+            logger.info("**** lastpolltime: " + lastpolltime);
+            logger.info("**** lastclockfromDB: " + lastclockfromDB);
+
             // get last poll timestamp
             if (lastpolltime.equals("0")) {
                 //lastpolltime = getLastClockFromZabbix(zabbixApi);
@@ -485,6 +495,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 lastpolltimetozab = lastpolltime;
                 //lastpolltime = getLastClockFromZabbix(zabbixApi);
             }
+
+            logger.info("**** lastpolltimetozab: " + lastpolltimetozab);
 
             String tilltimeToZabbix = "";
             // if different between saved and current Zabbix time more than 3 hours
@@ -595,6 +607,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             if (!tilltimeToZabbix.equals(""))
                 lastclockfinal = Integer.parseInt(tilltimeToZabbix);
 
+            // if was no rows
+            if (lastclockfinal == 0)
+                lastclockfinal = currentTimeStamp;// Integer.parseInt(lastpolltime);
+
             logger.info(String.format("Save last clock timestamp: %s", lastclockfinal + 1));
 
             endpoint.getConfiguration().setLastpolltime(lastclockfinal + 1 + "");
@@ -641,6 +657,12 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             // httpClient.close();
             if (zabbixApi != null) {
                 zabbixApi.destory();
+            }
+
+            try {
+                ds.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
             }
             // dataSource.close();
             // return 0;
@@ -736,7 +758,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         } catch (Exception e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
-            logger.error(String.format("[%s] Error while Insert items to database%s",
+            logger.error(String.format("[%s] Error while Insert items to database",
                     endpoint.getOperationPath()));
             //return false;
         }
@@ -855,7 +877,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             pstmt = con.prepareStatement("SELECT cast(extract(EPOCH FROM lastclock) AS INTEGER) AS lastclock "
                     + "FROM metrics_lastpoll "
-                    + "WHERE source = ?");
+                            + "WHERE source = ? ",
+                    ResultSet.TYPE_SCROLL_INSENSITIVE,
+                    ResultSet.CONCUR_UPDATABLE);
             // +" LIMIT ?;");
             //pstmt.setString(1, "");
             pstmt.setString(1, String.format("%s:%s",
@@ -896,6 +920,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 return lastclock;
             } else {
 
+                resultset.first();
                 lastclock = resultset.getInt("lastclock");
                 logger.info("Received saved last clock from DB: " + lastclock);
 
