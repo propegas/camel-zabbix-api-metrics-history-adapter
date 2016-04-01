@@ -1,19 +1,7 @@
 package ru.atc.camel.zabbix.metrics.history;
 
-//import java.io.IOException;
-//import java.io.UnsupportedEncodingException;
-//import java.security.KeyManagementException;
-//import java.security.KeyStore;
-//import java.security.KeyStoreException;
-//import java.security.MessageDigest;
-//import java.security.NoSuchAlgorithmException;
-//import java.sql.Array;
-
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import io.github.hengyunabc.zabbix.api.DefaultZabbixApi;
-import io.github.hengyunabc.zabbix.api.Request;
-import io.github.hengyunabc.zabbix.api.RequestBuilder;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
@@ -26,44 +14,34 @@ import org.apache.http.impl.client.HttpClients;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.at_consulting.itsm.event.Event;
+import ru.atc.monitoring.zabbix.api.DefaultZabbixApi;
+import ru.atc.monitoring.zabbix.api.Request;
+import ru.atc.monitoring.zabbix.api.RequestBuilder;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+//import java.sql.DatabaseMetaData;
+import java.sql.ResultSetMetaData;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-//import java.util.concurrent.ScheduledExecutorService;
-//import java.util.regex.Matcher;
-//import java.util.regex.Pattern;
-//import javax.net.ssl.SSLContext;
-//import org.apache.commons.lang.ArrayUtils;
-//import org.apache.http.HttpVersion;
-//import org.apache.http.client.ClientProtocolException;
-//import org.apache.http.client.CookieStore;
-//import org.apache.http.client.config.RequestConfig;
-//import org.apache.http.client.methods.HttpPut;
-//import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
-//import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
-//import org.apache.http.impl.client.CloseableHttpClient;
-//import org.apache.http.impl.client.DefaultHttpClient;
-//import org.apache.http.impl.client.HttpClientBuilder;
-//import org.apache.http.impl.client.HttpClients;
-//import org.apache.http.params.CoreProtocolPNames;
-//import org.apache.http.ssl.SSLContextBuilder;
-//import com.google.gson.JsonObject;
-//import net.sf.ehcache.search.expression.And;
-//import ru.at_consulting.itsm.device.Device;
-//import scala.xml.dtd.ParameterEntityDecl;
-
 public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
-    private static Logger logger = LoggerFactory.getLogger(Main.class);
+    private static final int SECONDS_IN_HOUR = 3600;
+    private static final int CONNECT_TIMEOUT = 20000;
+    private static final int SOCKET_TIMEOUT = 360000;
+    private static final int MAX_CONN_PER_ROUTE = 40;
+    private static final int MAX_CONN_TOTAL = 40;
+    private static final int CONNECTION_TIME_TO_LIVE = 120;
 
-    private static Logger logger2 = LoggerFactory.getLogger(Main.class);
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
-    private ZabbixAPIEndpoint endpoint;
+    private final ZabbixAPIEndpoint endpoint;
 
     private BasicDataSource ds;
 
@@ -108,14 +86,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         //exchange.getIn().setHeader("Source", endpoint.getConfiguration().getAdaptername());
         exchange.getIn().setHeader("Source", source);
 
-        try {
-            // Processor processor = getProcessor();
-            // .process(exchange);
-            // processor.process(exchange);
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            // e.printStackTrace();
-        }
     }
 
     @Override
@@ -123,10 +93,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
         String operationPath = endpoint.getOperationPath();
 
-        if (operationPath.equals("metricshistory"))
+        if ("metricshistory".equals(operationPath))
             return processSearchDevices();
 
-        if (operationPath.equals("deletehistory"))
+        if ("deletehistory".equals(operationPath))
             return processDeleteHistory();
 
         // only one operation implemented for now !
@@ -138,7 +108,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         ds = Main.setupDataSource();
 
         long currentTimeStamp = System.currentTimeMillis() / 1000;
-        List<HashMap<String, Object>> summirizedHistoryRows = new ArrayList<>();
+        //List<HashMap<String, Object>> summirizedHistoryRows = new ArrayList<>();
 
         logger.info(String.format(" **** [%s] [%s] ...",
                 endpoint.getOperationPath(),
@@ -150,9 +120,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                     ds.getNumActive(),
                     ds.getNumIdle()));
 
-            processSummarizeOnTable("history_float", currentTimeStamp, summirizedHistoryRows);
+            processSummarizeOnTable("history_float", currentTimeStamp);
 
-            processSummarizeOnTable("history_int", currentTimeStamp, summirizedHistoryRows);
+            processSummarizeOnTable("history_int", currentTimeStamp);
 
             /*
             try {
@@ -201,13 +171,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             }
         }
 
-
         return 1;
     }
 
-    private void processSummarizeOnTable(String tablename, long currentTimeStamp, List<HashMap<String, Object>> summirizedHistoryRows) {
+    private void processSummarizeOnTable(String tablename, long currentTimeStamp) {
         logger.info(String.format(" **** [%s] Try to get Summarized history ...",
                 endpoint.getOperationPath()));
+        List<HashMap<String, Object>> summirizedHistoryRows = new ArrayList<>();
         try {
             summirizedHistoryRows = selectOldHistoryByDay(tablename, currentTimeStamp);
         } catch (Throwable throwable) {
@@ -320,11 +290,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             //return list;
         }
 
-
     }
 
     private List<HashMap<String, Object>> selectOldHistoryByDay(String tablename, long currentTimeStamp)
-            throws SQLException, Throwable {
+            throws SQLException {
 
         //BasicDataSource ds = Main.setupDataSource();
 
@@ -402,7 +371,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             //return list;
         }
 
-
     }
 
     @Override
@@ -418,7 +386,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         return timeout;
     }
 
-    private int processSearchDevices() throws Exception {
+    private int processSearchDevices() {
 
         // Long timestamp;
 
@@ -460,10 +428,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             String lastpolltimetozab;
 
             HttpClient httpClient2 = HttpClients.custom()
-                    .setConnectionTimeToLive(120, TimeUnit.SECONDS)
-                    .setMaxConnTotal(40).setMaxConnPerRoute(40)
+                    .setConnectionTimeToLive(CONNECTION_TIME_TO_LIVE, TimeUnit.SECONDS)
+                    .setMaxConnTotal(MAX_CONN_TOTAL).setMaxConnPerRoute(MAX_CONN_PER_ROUTE)
                     .setDefaultRequestConfig(RequestConfig.custom()
-                            .setSocketTimeout(360000).setConnectTimeout(20000).build())
+                            .setSocketTimeout(SOCKET_TIMEOUT).setConnectTimeout(CONNECT_TIMEOUT).build())
                     .setRetryHandler(new DefaultHttpRequestRetryHandler(5, true))
                     .build();
 
@@ -481,12 +449,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             long lastclockfromDB = getLastClockFromDB();
             long currentTimeStamp = System.currentTimeMillis() / 1000;
 
-
             logger.info("**** lastpolltime: " + lastpolltime);
             logger.info("**** lastclockfromDB: " + lastclockfromDB);
 
             // get last poll timestamp
-            if (lastpolltime.equals("0")) {
+            if ("0".equals(lastpolltime)) {
                 //lastpolltime = getLastClockFromZabbix(zabbixApi);
                 lastpolltime = lastclockfromDB + "";
                 //lastpolltimetozab = (Integer.parseInt(lastpolltime) - 3600) + "";
@@ -504,11 +471,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             logger.info("**** currentTimeStamp: " + currentTimeStamp);
             if (currentTimeStamp - Integer.parseInt(lastpolltimetozab) > maxDiffTime) {
                 tilltimeToZabbix = Integer.parseInt(lastpolltimetozab) + maxDiffTime + "";
-                logger.info("**** Different between saved and current Zabbix time more than "
-                        + (float) maxDiffTime / 3600 + " hours");
-                logger.info(String.format("**** Set 'till_time' property: %s", tilltimeToZabbix));
+                logger.info(String.format("**** Different between saved and current Zabbix time more than %s hours",
+                        (float) maxDiffTime / SECONDS_IN_HOUR));
+                logger.info(String.format("**** Set 'till_time' property: %s",
+                        tilltimeToZabbix));
             }
-
 
             // get itemids from DB
             Object[] allitems = getAllItemsIdFromDB();
@@ -517,18 +484,18 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             logger.info(String.format("**** Received %d metrics from DB", allitemids.length));
 
-			/*
+            /*
              * History object types to return.
 
-				Possible values:
-				0 - float; 
-				1 - string; 
-				2 - log; 
-				3 - integer; 
-				4 - text. 
-				
-				Default: 3.
-			 */
+                Possible values:
+                0 - float;
+                1 - string;
+                2 - log;
+                3 - integer;
+                4 - text.
+
+                Default: 3.
+             */
 
             long lastclock;
             long lastclockfinal = 0;
@@ -602,14 +569,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 logger.info("Sended LOG Metrics: " + logItemsList.size());
             }
 
-
             // save last received clock from zabbix to DB
-            if (!tilltimeToZabbix.equals(""))
+            if (!"".equals(tilltimeToZabbix))
                 lastclockfinal = Integer.parseInt(tilltimeToZabbix);
 
             // if was no rows
             if (lastclockfinal == 0)
-                lastclockfinal = currentTimeStamp;// Integer.parseInt(lastpolltime);
+                lastclockfinal = currentTimeStamp; // Integer.parseInt(lastpolltime);
 
             logger.info(String.format("Save last clock timestamp: %s", lastclockfinal + 1));
 
@@ -632,7 +598,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
-
 
         } catch (NullPointerException e) {
             // TODO Auto-generated catch block
@@ -699,7 +664,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             }
         }
 
-
     }
 
     private void processSqlSummarizedItemsToExchange(List<HashMap<String, Object>> itemsList, String tablename) {
@@ -730,7 +694,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             }
         }
-
 
     }
 
@@ -764,11 +727,11 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         }
 
         // reset batch count
-        sql = "";
+        //sql = "";
         //batchRowCount = 0;
     }
 
-    private Object[] getAllItemsIdFromDB() throws Throwable {
+    private Object[] getAllItemsIdFromDB() throws Exception {
 
         String[] itemids = new String[0];
 
@@ -817,14 +780,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             //i++;
             logger.debug("MetricsHashMap: " + metricsMap.toString());
 
-
             //logger.debug("Get last clock from DB: " +  lastclock);
             /*
             for(int i = 0; i < itemids.length; i++) {
-				//itemids[i] = items.getJSONObject(i).getString("itemid");
-				logger.debug("Found ItemID in DB: " + i + ": " + itemids[i]);
-			}
-			*/
+                //itemids[i] = items.getJSONObject(i).getString("itemid");
+                logger.debug("Found ItemID in DB: " + i + ": " + itemids[i]);
+            }
+            */
             resultset.close();
             pstmt.close();
 
@@ -860,7 +822,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         }
     }
 
-    private Long getLastClockFromDB() throws Throwable {
+    private Long getLastClockFromDB() throws Exception {
 
         long lastclock;
 
@@ -875,9 +837,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             con = ds.getConnection();
 
-            pstmt = con.prepareStatement("SELECT cast(extract(EPOCH FROM lastclock) AS INTEGER) AS lastclock "
-                    + "FROM metrics_lastpoll "
-                            + "WHERE source = ? ",
+            pstmt = con.prepareStatement(new StringBuilder()
+                            .append("SELECT cast(extract(EPOCH FROM lastclock) AS INTEGER) AS lastclock ")
+                            .append("FROM metrics_lastpoll ").append("WHERE source = ? ")
+                            .toString(),
                     ResultSet.TYPE_SCROLL_INSENSITIVE,
                     ResultSet.CONCUR_UPDATABLE);
             // +" LIMIT ?;");
@@ -932,7 +895,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 return lastclock;
             }
 
-
         } catch (SQLException e) {
             // TODO Auto-generated catch block
             //e.printStackTrace();
@@ -956,54 +918,55 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         }
     }
 
-    private String getLastClockFromZabbix(DefaultZabbixApi zabbixApi) {
-        // TODO Auto-generated method stub
-        Request getRequest;
-        JSONObject getResponse;
-        // JsonObject params = new JsonObject();
-        logger.info(" **** Try to get Last metrics Clock from Zabbix  ***** ");
-        try {
-            //JSONObject filter = new JSONObject();
-
-            getRequest = RequestBuilder.newBuilder().method("history.get")
-                    .paramEntry("output", "extend")
-                    .paramEntry("sortfield", "clock")
-                    .paramEntry("sortorder", "DESC")
-                    .paramEntry("limit", 1)
-
-                    .build();
-
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            throw new RuntimeException("Failed create JSON request for get Last Clock.");
-        }
-        JSONArray items;
-        try {
-            getResponse = zabbixApi.call(getRequest);
-            //System.err.println(getRequest);
-            logger.debug("****** Finded Zabbix getRequest: " + getRequest);
-
-            items = getResponse.getJSONArray("result");
-            logger.debug("****** Finded Zabbix getResponse: " + getResponse);
-
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-            throw new RuntimeException("Failed get JSON response result for Last Clock.");
-        }
-
-        String lastclock = items.getJSONObject(0).getString("clock");
-
-        logger.debug("Last Clock: " + lastclock);
-
-
-        //listFinal.addAll(deviceList);
-
-        return lastclock;
-    }
+// --Commented out by Inspection START (31.03.2016 18:00):
+//    private String getLastClockFromZabbix(DefaultZabbixApi zabbixApi) {
+//        // TODO Auto-generated method stub
+//        Request getRequest;
+//        JSONObject getResponse;
+//        // JsonObject params = new JsonObject();
+//        logger.info(" **** Try to get Last metrics Clock from Zabbix  ***** ");
+//        try {
+//            //JSONObject filter = new JSONObject();
+//
+//            getRequest = RequestBuilder.newBuilder().method("history.get")
+//                    .paramEntry("output", "extend")
+//                    .paramEntry("sortfield", "clock")
+//                    .paramEntry("sortorder", "DESC")
+//                    .paramEntry("limit", 1)
+//
+//                    .build();
+//
+//        } catch (Exception ex) {
+//            ex.printStackTrace();
+//            throw new RuntimeException("Failed create JSON request for get Last Clock.");
+//        }
+//        JSONArray items;
+//        try {
+//            getResponse = zabbixApi.call(getRequest);
+//            //System.err.println(getRequest);
+//            logger.debug("****** Finded Zabbix getRequest: " + getRequest);
+//
+//            items = getResponse.getJSONArray("result");
+//            logger.debug("****** Finded Zabbix getResponse: " + getResponse);
+//
+//        } catch (Exception e) {
+//            // TODO Auto-generated catch block
+//            e.printStackTrace();
+//            throw new RuntimeException("Failed get JSON response result for Last Clock.");
+//        }
+//
+//        String lastclock = items.getJSONObject(0).getString("clock");
+//
+//        logger.debug("Last Clock: " + lastclock);
+//
+//        //listFinal.addAll(deviceList);
+//
+//        return lastclock;
+//    }
+// --Commented out by Inspection STOP (31.03.2016 18:00)
 
     private List<Map<String, Object>> getHistoryByItems(DefaultZabbixApi zabbixApi, String[] allitemids,
-                                                        String time_from, String time_till, int historytype) {
+                                                        String timeFrom, String timeTill, int historytype) {
 
         String limitElements = endpoint.getConfiguration().getZabbixMaxElementsLimit();
 
@@ -1014,7 +977,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         try {
 
             logger.info(String.format("**** Try to get metrics History for item type: " +
-                    "%d from timestamp: %s to timestamp: %s", historytype, time_from, time_till));
+                    "%d from timestamp: %s to timestamp: %s", historytype, timeFrom, timeTill));
 
             //JSONObject filter = new JSONObject();
             //filter.put("type", new String[] { "9" });
@@ -1024,13 +987,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                     .paramEntry("output", "extend")
                     //.paramEntry("output", new String[] { "itemid", "value", "clock" })
                     .paramEntry("itemids", allitemids)
-                    .paramEntry("time_from", time_from)
-                    //.paramEntry("time_till", time_till)
+                    .paramEntry("time_from", timeFrom)
+                    //.paramEntry("time_till", timeTill)
                     .paramEntry("sortfield", "clock")
                     .paramEntry("sortorder", "DESC")
                     .paramEntry("limit", limitElements);
-            if (!time_till.equals(""))
-                getRequestBuilder.paramEntry("time_till", time_till);
+            if (!"".equals(timeTill))
+                getRequestBuilder.paramEntry("time_till", timeTill);
 
             getRequest = getRequestBuilder.build();
 
@@ -1073,12 +1036,12 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             Object value;
             /*
              * Possible values:
-			0 - float; 
-			1 - string; 
-			2 - log; 
-			3 - integer; 
-			4 - text. 
-			 */
+            0 - float;
+            1 - string;
+            2 - log;
+            3 - integer;
+            4 - text.
+             */
             switch (historytype) {
                 case 3:
                     value = Long.parseLong(rowvalue);
@@ -1092,7 +1055,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                     break;
 
             }
-
 
             Map<String, Object> answer = new HashMap<>();
             answer.put("itemid", itemid);
@@ -1141,7 +1103,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     }
 
-    private List<HashMap<String, Object>> convertRStoList(ResultSet resultset) throws SQLException {
+    private List<HashMap<String, Object>> convertRStoList(ResultSet resultset) {
 
         List<HashMap<String, Object>> list = new ArrayList<>();
 
@@ -1177,11 +1139,8 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             return null;
 
-        } finally {
-
         }
     }
-
 
     public enum PersistentEventSeverity {
         OK, INFO, WARNING, MINOR, MAJOR, CRITICAL;

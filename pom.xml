@@ -3,12 +3,14 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>ru.atc.monitoring</groupId>
     <artifactId>camel-zabbix-api-metrics-history-adapter</artifactId>
-    <version>0.5.1-SNAPSHOT</version>
+    <version>0.6-SNAPSHOT</version>
 
     <properties>
         <camel-version>2.16.2</camel-version>
         <project.build.targetName>camelZabbixMetricsHistory</project.build.targetName>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <checkstyle.version>6.11.2</checkstyle.version>
+        <checkstyle.plugin.version>2.17</checkstyle.plugin.version>
     </properties>
 
     <dependencies>
@@ -137,10 +139,45 @@
             <version>1.7.18</version>
         </dependency>
 
+        <dependency>
+            <groupId>ru.atc.monitoring</groupId>
+            <artifactId>zabbix-api</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${checkstyle.plugin.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>${checkstyle.version}</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <configLocation>checkstyle.xml</configLocation>
+                    <suppressionsLocation>checkstyle_suppress.xml</suppressionsLocation>
+                    <consoleOutput>true</consoleOutput>
+                    <failsOnError>true</failsOnError>
+                    <failOnViolation>true</failOnViolation>
+                    <outputFileFormat>xml</outputFileFormat>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
 
             <!-- Required for HTML and Json annotation-based doc generation -->
             <!-- APT requires compiler compliance level 1.6 -->

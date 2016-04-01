@@ -1,169 +1,171 @@
 package ru.atc.camel.zabbix.metrics.history;
 
 //import org.apache.camel.spi.UriParam;
+
 import org.apache.camel.spi.UriParams;
 
 @UriParams
-public class ZabbixAPIConfiguration {	
-    
-	private String zabbixip;
-	
-	private String username;
-	
-	private String adaptername;
-	
-	private String password;
-	
-	private String source;
-	
-	private String zabbixapiurl;
-	
-	private String zabbix_item_description_pattern; 
-	
-	private String zabbix_item_ke_pattern;
-	
-	private String test;
-	
-	private String lastpolltime;
+public class ZabbixAPIConfiguration {
 
-	private String zabbixMaxElementsLimit;
+    private static final int DEFAULT_DELAY = 720;
 
-	private int batchRowCount;
+    private String zabbixip;
 
-	private int maxDiffTime;
-	
-	private int lastid = 0;
-	
-    private int delay = 720;
+    private String username;
 
-	private String dayInPast;
-  
-	public int getDelay() {
-		return delay;
-	}
+    private String adaptername;
 
-	public void setDelay(int delay) {
-		this.delay = delay;
-	}
+    private String password;
 
-	public int getLastid() {
-		return lastid;
-	}
+    private String source;
 
-	public void setLastid(int lastid) {
-		this.lastid = lastid;
-	}
+    private String zabbixapiurl;
 
-	public String getZabbixip() {
-		return zabbixip;
-	}
+    private String zabbixItemDescriptionPattern;
 
-	public void setZabbixip(String zabbixip) {
-		this.zabbixip = zabbixip;
-	}
+    private String zabbixItemKePattern;
 
-	public String getUsername() {
-		return username;
-	}
+    private String test;
 
-	public void setUsername(String username) {
-		this.username = username;
-	}
+    private String lastpolltime;
 
-	public String getAdaptername() {
-		return adaptername;
-	}
+    private String zabbixMaxElementsLimit;
 
-	public void setAdaptername(String adaptername) {
-		this.adaptername = adaptername;
-	}
+    private int batchRowCount;
 
-	public String getPassword() {
-		return password;
-	}
+    private int maxDiffTime;
 
-	public void setPassword(String password) {
-		this.password = password;
-	}
+    private int lastid;
 
-	public String getSource() {
-		return source;
-	}
+    private int delay = DEFAULT_DELAY;
 
-	public void setSource(String source) {
-		this.source = source;
-	}
+    private String dayInPast;
 
-	public String getZabbixapiurl() {
-		return zabbixapiurl;
-	}
+    public int getDelay() {
+        return delay;
+    }
 
-	public void setZabbixapiurl(String zabbixapiurl) {
-		this.zabbixapiurl = zabbixapiurl;
-	}
+    public void setDelay(int delay) {
+        this.delay = delay;
+    }
 
-	public String getZabbix_item_description_pattern() {
-		return zabbix_item_description_pattern;
-	}
+    public int getLastid() {
+        return lastid;
+    }
 
-	public void setZabbix_item_description_pattern(String zabbix_item_description_pattern) {
-		this.zabbix_item_description_pattern = zabbix_item_description_pattern;
-	}
+    public void setLastid(int lastid) {
+        this.lastid = lastid;
+    }
 
-	public String getTest() {
-		return test;
-	}
+    public String getZabbixip() {
+        return zabbixip;
+    }
 
-	public void setTest(String test) {
-		this.test = test;
-	}
+    public void setZabbixip(String zabbixip) {
+        this.zabbixip = zabbixip;
+    }
 
-	public String getZabbix_item_ke_pattern() {
-		return zabbix_item_ke_pattern;
-	}
+    public String getUsername() {
+        return username;
+    }
 
-	public void setZabbix_item_ke_pattern(String zabbix_item_ke_pattern) {
-		this.zabbix_item_ke_pattern = zabbix_item_ke_pattern;
-	}
+    public void setUsername(String username) {
+        this.username = username;
+    }
 
-	public String getLastpolltime() {
-		return lastpolltime;
-	}
+    public String getAdaptername() {
+        return adaptername;
+    }
 
-	public void setLastpolltime(String lastpolltime) {
-		this.lastpolltime = lastpolltime;
-	}
+    public void setAdaptername(String adaptername) {
+        this.adaptername = adaptername;
+    }
 
+    public String getPassword() {
+        return password;
+    }
 
-	public String getZabbixMaxElementsLimit() {
-		return zabbixMaxElementsLimit;
-	}
+    public void setPassword(String password) {
+        this.password = password;
+    }
 
-	public void setZabbixMaxElementsLimit(String zabbixMaxElementsLimit) {
-		this.zabbixMaxElementsLimit = zabbixMaxElementsLimit;
-	}
+    public String getSource() {
+        return source;
+    }
 
-	public int getBatchRowCount() {
-		return batchRowCount;
-	}
+    public void setSource(String source) {
+        this.source = source;
+    }
 
-	public void setBatchRowCount(int batchRowCount) {
-		this.batchRowCount = batchRowCount;
-	}
+    public String getZabbixapiurl() {
+        return zabbixapiurl;
+    }
 
-	public int getMaxDiffTime() {
-		return maxDiffTime;
-	}
+    public void setZabbixapiurl(String zabbixapiurl) {
+        this.zabbixapiurl = zabbixapiurl;
+    }
 
-	public void setMaxDiffTime(int maxDiffTime) {
-		this.maxDiffTime = maxDiffTime;
-	}
+    public String getZabbixItemDescriptionPattern() {
+        return zabbixItemDescriptionPattern;
+    }
 
-	public String getDayInPast() {
-		return dayInPast;
-	}
+    public void setZabbixItemDescriptionPattern(String zabbixItemDescriptionPattern) {
+        this.zabbixItemDescriptionPattern = zabbixItemDescriptionPattern;
+    }
 
-	public void setDayInPast(String dayInPast) {
-		this.dayInPast = dayInPast;
-	}
+    public String getTest() {
+        return test;
+    }
+
+    public void setTest(String test) {
+        this.test = test;
+    }
+
+    public String getZabbixItemKePattern() {
+        return zabbixItemKePattern;
+    }
+
+    public void setZabbixItemKePattern(String zabbixItemKePattern) {
+        this.zabbixItemKePattern = zabbixItemKePattern;
+    }
+
+    public String getLastpolltime() {
+        return lastpolltime;
+    }
+
+    public void setLastpolltime(String lastpolltime) {
+        this.lastpolltime = lastpolltime;
+    }
+
+    public String getZabbixMaxElementsLimit() {
+        return zabbixMaxElementsLimit;
+    }
+
+    public void setZabbixMaxElementsLimit(String zabbixMaxElementsLimit) {
+        this.zabbixMaxElementsLimit = zabbixMaxElementsLimit;
+    }
+
+    public int getBatchRowCount() {
+        return batchRowCount;
+    }
+
+    public void setBatchRowCount(int batchRowCount) {
+        this.batchRowCount = batchRowCount;
+    }
+
+    public int getMaxDiffTime() {
+        return maxDiffTime;
+    }
+
+    public void setMaxDiffTime(int maxDiffTime) {
+        this.maxDiffTime = maxDiffTime;
+    }
+
+    public String getDayInPast() {
+        return dayInPast;
+    }
+
+    public void setDayInPast(String dayInPast) {
+        this.dayInPast = dayInPast;
+    }
 }

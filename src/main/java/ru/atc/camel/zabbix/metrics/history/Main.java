@@ -23,48 +23,37 @@ import java.io.InputStream;
 import java.util.Objects;
 import java.util.Properties;
 
-//import java.io.File;
-//import javax.sql.DataSource;
-//import org.apache.camel.CamelContext;
-//import org.apache.camel.Endpoint;
-//import org.apache.camel.spring.SpringCamelContext;
-//import org.springframework.context.ApplicationContext;
-//import org.springframework.context.support.ClassPathXmlApplicationContext;
-//import ru.at_consulting.itsm.device.Device;
-//import org.apache.camel.processor.idempotent.FileIdempotentRepository;
+public final class Main {
 
-public class Main {
+    private static final int MAX_TOTAL = 20;
+    private static final int IDLE_TIME_MILLIS = 300000;
+    private static final int ABANDONED_TIMEOUT = 300;
+    private static final int MAX_CONN_LIFETIME = 900000;
 
-    public static String activemq_port = null;
-    public static String activemq_ip = null;
-    public static String sql_ip = null;
-    public static String sql_port = null;
-    public static String sql_database = null;
-    public static String sql_user = null;
-    public static String sql_password = null;
-    public static String usejms = null;
-    public static String source;
-    public static String useSummarizeRoute = "false";
-    public static String useMainRoute = "true";
-    public static int maxConnLifetime = 900000;
+    private static String activemq_port;
+    private static String activemq_ip;
+    private static String sql_ip;
+    private static String sql_port;
+    private static String sql_database;
+    private static String sql_user;
+    private static String sql_password;
+    private static String usejms;
+    private static String source;
+    private static String useSummarizeRoute = "false";
+    private static String useMainRoute = "true";
+
+    private static int maxConnLifetime = MAX_CONN_LIFETIME;
 
     private static Logger logger = LoggerFactory.getLogger(Main.class);
+
+    private Main() {
+
+    }
 
     public static void main(String[] args) throws Exception {
 
         logger.info("Starting Custom Apache Camel component example");
         logger.info("Press CTRL+C to terminate the JVM");
-        /*
-        if ( args.length == 6  ) {
-			activemq_port = (String)args[1];
-			activemq_ip = (String)args[0];
-			sql_ip = (String)args[2];
-			sql_database = (String)args[3];
-			sql_user = (String)args[4];
-			sql_password = (String)args[5];
-		}
-		*/
-
 
         // get Properties from file
         Properties prop = new Properties();
@@ -108,8 +97,6 @@ public class Main {
             }
         }
 
-        //System.exit(0);
-
         if (activemq_port == null || Objects.equals(activemq_port, ""))
             activemq_port = "61616";
         if (activemq_ip == null || Objects.equals(activemq_ip, ""))
@@ -125,13 +112,11 @@ public class Main {
         if (sql_password == null || Objects.equals(sql_password, ""))
             sql_password = "";
 
-
         logger.info("activemq_ip: " + activemq_ip);
         logger.info("activemq_port: " + activemq_port);
 
         org.apache.camel.main.Main main = new org.apache.camel.main.Main();
         main.enableHangupSupport();
-        //main.addOption(option);
 
         main.addRouteBuilder(new RouteBuilder() {
 
@@ -148,12 +133,10 @@ public class Main {
                 properties.setLocation("classpath:zabbixapi.properties");
                 getContext().addComponent("properties", properties);
 
-                ConnectionFactory connectionFactory = new ActiveMQConnectionFactory
-                        ("tcp://" + activemq_ip + ":" + activemq_port);
+                ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
+                        "tcp://" + activemq_ip + ":" + activemq_port
+                );
                 getContext().addComponent("activemq", JmsComponent.jmsComponentAutoAcknowledge(connectionFactory));
-
-
-                //getContext().reg
 
                 SqlComponent sql = new SqlComponent();
                 BasicDataSource ds = setupDataSource();
@@ -166,9 +149,8 @@ public class Main {
 
                 getContext().setAllowUseOriginalMessage(false);
 
-
                 // Heartbeats
-                if (usejms.equals("true")) {
+                if ("true".equals(usejms)) {
                     from("timer://foo?period={{heartbeatsdelay}}")
                             //.choice()
                             .process(new Processor() {
@@ -182,28 +164,27 @@ public class Main {
                             .log("*** Heartbeat: ${id}");
                 }
 
-
                 // get metrics history
                 if ("true".equals(useMainRoute)) {
-                    from("zabbixapi://metricshistory?"
-                            + "delay={{delay}}&"
-                            + "zabbixapiurl={{zabbixapiurl}}&"
-                            + "username={{username}}&"
-                            + "password={{password}}&"
-                            + "adaptername={{adaptername}}&"
-                            + "zabbix_item_ke_pattern={{zabbix_item_ke_pattern}}&"
-                            + "source={{source}}&"
-                            + "batchRowCount={{batchRowCount}}&"
-                            + "maxDiffTime={{maxDiffTime}}&"
-                            + "zabbixMaxElementsLimit={{zabbixMaxElementsLimit}}&"
-                            + "lastpolltime={{lastpolltime}}&"
-                            + "zabbix_item_description_pattern={{zabbix_item_description_pattern}}")
+                    from(new StringBuilder()
+                            .append("zabbixapi://metricshistory?")
+                            .append("delay={{delay}}&").append("zabbixapiurl={{zabbixapiurl}}&")
+                            .append("username={{username}}&")
+                            .append("password={{password}}&")
+                            .append("adaptername={{adaptername}}&")
+                            .append("zabbixItemKePattern={{zabbixItemKePattern}}&")
+                            .append("source={{source}}&")
+                            .append("batchRowCount={{batchRowCount}}&")
+                            .append("maxDiffTime={{maxDiffTime}}&")
+                            .append("zabbixMaxElementsLimit={{zabbixMaxElementsLimit}}&")
+                            .append("lastpolltime={{lastpolltime}}&")
+                            .append("zabbixItemDescriptionPattern={{zabbixItemDescriptionPattern}}")
+                            .toString())
 
                             .choice()
                             .when(header("queueName").isEqualTo("Metrics"))
 
                             .to("jdbc:BasicDataSource")
-
 
                             //.recipientList(simple("sql:insert into ${header.Table} {{sql.insertMetricHistory}}"))
                             .log(LoggingLevel.DEBUG, "**** Inserted new Batch rows, SQL: ${body} .")
@@ -227,38 +208,18 @@ public class Main {
 
                 // select, summarize and delete all history metrics
                 if ("true".equals(useSummarizeRoute)) {
-                    from("zabbixapi://deletehistory?"
-                            + "delay={{delete_delay}}&"
-                            + "adaptername={{adaptername}}&"
-                            + "source={{source}}&"
-                            + "dayInPast={{dayInPast}}&"
-                            + "batchRowCount={{batchRowCount}}"
+                    from(new StringBuilder()
+                            .append("zabbixapi://deletehistory?")
+                            .append("delay={{delete_delay}}&")
+                            .append("adaptername={{adaptername}}&")
+                            .append("source={{source}}&")
+                            .append("dayInPast={{dayInPast}}&")
+                            .append("batchRowCount={{batchRowCount}}")
+                            .toString()
                     )
-
                             .choice()
                             .when(header("queueName").isEqualTo("Metrics"))
-                            //.to("sql:{{sql.insertMetric}}?dataSource=dataSource")
-                            //.log(LoggingLevel.DEBUG, "**** use table: ${header.Table}")
-                            //.log(LoggingLevel.DEBUG, "**** use query: {{sql.insertMetricHistory}}")
-                        /*
-                        .choice()
-
-							.when(header("Table").isEqualTo("history_float"))
-								.to("sql:insert into history_float {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_int"))
-								.to("sql:insert into history_int {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_str"))
-								.to("sql:insert into history_str {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_log"))
-								.to("sql:insert into history_log {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-							.when(header("Table").isEqualTo("history_text"))
-								.to("sql:insert into history_text {{sql.insertMetricHistory}}?consumer.delay=0&consumer.initialDelay=0")
-						.end()
-						*/
                             .to("jdbc:BasicDataSource")
-
-
-                            //.recipientList(simple("sql:insert into ${header.Table} {{sql.insertMetricHistory}}"))
                             .log(LoggingLevel.DEBUG, "**** Inserted new Batch rows, SQL: ${body} .")
                             .endChoice()
                             //.log("*** Metric: ${id} ${header.DeviceId}")
@@ -283,18 +244,17 @@ public class Main {
         main.run();
     }
 
-
     public static BasicDataSource setupDataSource() {
 
         String url = String.format("jdbc:postgresql://%s:%s/%s",
                 sql_ip, sql_port, sql_database);
 
         BasicDataSource ds = new BasicDataSource();
-        ds.setMaxTotal(20);
+        ds.setMaxTotal(MAX_TOTAL);
         //ds.setMax
         ds.setMaxIdle(10);
         ds.setMinIdle(5);
-        ds.setSoftMinEvictableIdleTimeMillis(300000);
+        ds.setSoftMinEvictableIdleTimeMillis(IDLE_TIME_MILLIS);
         ds.setMaxConnLifetimeMillis(maxConnLifetime);
         ds.setLogExpiredConnections(true);
         //ds.setLogWriter(logger);
@@ -302,16 +262,13 @@ public class Main {
         ds.setEnableAutoCommitOnReturn(true);
         ds.setRemoveAbandonedOnBorrow(true);
         ds.setRemoveAbandonedOnMaintenance(true);
-        ds.setRemoveAbandonedTimeout(300);
+        ds.setRemoveAbandonedTimeout(ABANDONED_TIMEOUT);
         ds.setLogAbandoned(true);
 
-        //ds.idle
-        //ds.setMaxOpenPreparedStatements();
         ds.setDriverClassName("org.postgresql.Driver");
         ds.setUsername(sql_user);
         ds.setPassword(sql_password);
         ds.setUrl(url);
-
 
         return ds;
     }
