@@ -29,7 +29,7 @@ public final class Main {
     private static final int IDLE_TIME_MILLIS = 300000;
     private static final int ABANDONED_TIMEOUT = 300;
     private static final int MAX_CONN_LIFETIME = 900000;
-
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
     private static String activemq_port;
     private static String activemq_ip;
     private static String sql_ip;
@@ -41,10 +41,7 @@ public final class Main {
     private static String source;
     private static String useSummarizeRoute = "false";
     private static String useMainRoute = "true";
-
     private static int maxConnLifetime = MAX_CONN_LIFETIME;
-
-    private static Logger logger = LoggerFactory.getLogger(Main.class);
 
     private Main() {
 

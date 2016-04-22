@@ -2,6 +2,7 @@ package ru.atc.camel.zabbix.metrics.history;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.sun.deploy.util.StringUtils;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
@@ -21,14 +22,16 @@ import ru.atc.monitoring.zabbix.api.RequestBuilder;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.SQLException;
-//import java.sql.DatabaseMetaData;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+//import java.sql.DatabaseMetaData;
 
 public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
@@ -636,32 +639,116 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         return 1;
     }
 
-    private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type, HashMap metricsMap) {
+    private void processSqlItemsToExchange(List<Map<String, Object>> itemsList, String type, HashMap metricsMap) throws SQLException {
 
+        // reverse the list
+        Collections.reverse(itemsList);
         logger.info("Create Exchange containers for " + type + " history metrics...");
         //int batchRowCount = 0;
         String sqlPrefixPart = "insert into history_" + type.toLowerCase() + " ( metricid, value, timestamp) values ";
         String sql = "";
+        String sqlLastValuesPrefixPart = "insert into  history_" + type.toLowerCase() + "_lastvalue (metricid, lastvalue) values ";
+        String sqlLastValues = "";
 
-        for (int i = 0; i < (itemsList != null ? itemsList.size() : 0); i++) {
 
-            sql = sql + String.format(" (%s, '%s', to_timestamp('%s')),",
-                    metricsMap.get(itemsList.get(i).get("itemid").toString()),
-                    itemsList.get(i).get("value"),
-                    itemsList.get(i).get("timestamp"));
+        HashMap<String, String> metricValues = new HashMap<>();
 
-            //logger.info("i : " + i + " / " + itemsList.size());
+        if (itemsList != null) {
+            for (int i = 0; i < itemsList.size(); i++) {
 
-            int mod = (i + 1) % endpoint.getConfiguration().getBatchRowCount();
+                metricValues.put(metricsMap.get(itemsList.get(i).get("itemid").toString()).toString(),
+                        itemsList.get(i).get("value").toString());
 
-            if (mod == 0 || (i == itemsList.size() - 1)) {
-                //batchRowCount++;
+                sql = sql + String.format(" (%s, '%s', to_timestamp('%s')),",
+                        metricsMap.get(itemsList.get(i).get("itemid").toString()),
+                        itemsList.get(i).get("value"),
+                        itemsList.get(i).get("timestamp"));
 
-                processBatchSQLExchange(sqlPrefixPart, sql, mod);
+                sqlLastValues = sqlLastValues + String.format(" (%s, '%s'),",
+                        metricsMap.get(itemsList.get(i).get("itemid").toString()),
+                        itemsList.get(i).get("value"));
 
-                // reset batch count
-                sql = "";
+                //logger.info("i : " + i + " / " + itemsList.size());
+
+                int mod = (i + 1) % endpoint.getConfiguration().getBatchRowCount();
+
+                if (mod == 0 || (i == itemsList.size() - 1)) {
+                    //batchRowCount++;
+
+                    processBatchSQLExchange(sqlPrefixPart, sql, mod);
+
+                    // insert for lastvalue
+                    //processBatchSQLExchange(sqlLastValuesPrefixPart, sql, mod);
+                    // reset SQL string
+                    sql = "";
+                    sqlLastValues = "";
+                }
             }
+
+            //metricValues.
+
+
+            Connection con = null;
+            PreparedStatement pstmt;
+            ResultSet resultset;
+
+            logger.info(" **** Try to get metrics IDs from DB  ***** ");
+            try {
+
+                con = ds.getConnection();
+
+                List<String> keys = new ArrayList<>();
+                for (Map.Entry<String, String> entry : metricValues.entrySet()) {
+                    keys.add(entry.getKey());
+                }
+                String join = "";
+                join += StringUtils.join(keys, ", ");
+
+                pstmt = con.prepareStatement("DELETE FROM history_" + type.toLowerCase() + "_lastvalue " +
+                        "WHERE metricid in (" + join + ")");
+
+                //pstmt.setArray(1, metricValues.keySet());
+                logger.info(String.format("[%s] [LASTVALUE] DB query: %s",
+                        endpoint.getOperationPath(), pstmt.toString()));
+
+                int rowNums = 0;
+                if (join.length() != 0) {
+                    rowNums = pstmt.executeUpdate();
+                }
+                logger.info(String.format("[LASTVALUE] DB query result rows: %d", rowNums));
+                //.
+                pstmt.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            } finally {
+                if (con != null) con.close();
+                //return null;
+                //return list;
+            }
+
+
+            // update lastvalues
+            int j = 0;
+            logger.info("**** metric uniq size: " + metricValues.size());
+            for (Map.Entry<String, String> entry : metricValues.entrySet()) {
+
+                j++;
+                sqlLastValues = sqlLastValues + String.format(" (%s, '%s'),",
+                        entry.getKey(),
+                        entry.getValue());
+
+                // insert for lastvalue
+                int mod = (j + 1) % endpoint.getConfiguration().getBatchRowCount();
+
+                if (mod == 0 || (j == metricValues.size() - 1)) {
+
+                    // insert for lastvalue
+                    processBatchSQLExchange(sqlLastValuesPrefixPart, sqlLastValues, mod);
+                    // reset SQL string
+                    sqlLastValues = "";
+                }
+            }
+
         }
 
     }
@@ -681,17 +768,14 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                     itemsList.get(i).get("value"),
                     itemsList.get(i).get("timestamp"));
 
-            //logger.info("i : " + i + " / " + itemsList.size());
-
             int mod = (i + 1) % endpoint.getConfiguration().getBatchRowCount();
 
             if (mod == 0 || (i == itemsList.size() - 1)) {
-                //batchRowCount++;
 
-                //logger.info("batchRowCount : " + i);
                 processBatchSQLExchange(sqlPrefixPart, sql, mod);
-                sql = "";
 
+                // reset SQL string
+                sql = "";
             }
         }
 
@@ -702,7 +786,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         String fullSql = String.format("%s %s",
                 sqlPrefixPart,
                 sql.substring(0, sql.length() - 1));
-        logger.debug(String.format("[%s] fullSql: %s",
+        logger.info(String.format("[%s] fullSql: %s",
                 endpoint.getOperationPath(), fullSql));
 
         int rowCount = mod == 0 ? endpoint.getConfiguration().getBatchRowCount() : mod;
@@ -719,17 +803,40 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                     endpoint.getOperationPath(), rowCount));
             //return true;
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
             logger.error(String.format("[%s] Error while Insert items to database",
                     endpoint.getOperationPath()));
             //return false;
         }
 
-        // reset batch count
-        //sql = "";
-        //batchRowCount = 0;
     }
+
+    private void processUpdateSQLExchange(String sql) {
+
+
+        logger.debug(String.format("[%s] fullSql: %s",
+                endpoint.getOperationPath(), sql));
+
+        logger.debug(String.format("[%s] Create Update SQL Exchange container",
+                endpoint.getOperationPath()));
+        Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setBody(sql);
+        exchange.getIn().setHeader("queueName", "Metrics");
+
+        try {
+            getProcessor().process(exchange);
+            logger.info(String.format("[%s] Update history lastvalue rows to database",
+                    endpoint.getOperationPath()));
+            //return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            logger.error(String.format("[%s] Error while Update items to database",
+                    endpoint.getOperationPath()));
+            //return false;
+        }
+
+    }
+
 
     private Object[] getAllItemsIdFromDB() throws Exception {
 
@@ -765,7 +872,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             //listc.toArray(itemids);
 
             // map itemid => metricid
-            Map metricsMap = new HashMap();
+            Map<String, Integer> metricsMap = new HashMap<>();
             if (listc != null) {
                 itemids = new String[listc.size()];
                 for (int i = 0; i < listc.size(); i++) {
