@@ -2,11 +2,11 @@ package ru.atc.camel.zabbix.metrics.history;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.sun.deploy.util.StringUtils;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.impl.ScheduledPollConsumer;
 import org.apache.commons.dbcp2.BasicDataSource;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -14,7 +14,7 @@ import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
 import org.apache.http.impl.client.HttpClients;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.at_consulting.itsm.event.Event;
+import ru.atc.adapters.type.Event;
 import ru.atc.monitoring.zabbix.api.DefaultZabbixApi;
 import ru.atc.monitoring.zabbix.api.Request;
 import ru.atc.monitoring.zabbix.api.RequestBuilder;
@@ -650,12 +650,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         String sqlLastValuesPrefixPart = "insert into  history_" + type.toLowerCase() + "_lastvalue (metricid, lastvalue) values ";
         String sqlLastValues = "";
 
-
         HashMap<String, String> metricValues = new HashMap<>();
 
         if (itemsList != null) {
             for (int i = 0; i < itemsList.size(); i++) {
-
+                logger.debug(String.format("[***] itemid:%s, metricid: %s",
+                        itemsList.get(i).get("itemid").toString(),
+                        metricsMap.get(itemsList.get(i).get("itemid").toString()).toString()));
                 metricValues.put(metricsMap.get(itemsList.get(i).get("itemid").toString()).toString(),
                         itemsList.get(i).get("value").toString());
 
@@ -684,9 +685,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                     sqlLastValues = "";
                 }
             }
-
-            //metricValues.
-
 
             Connection con = null;
             PreparedStatement pstmt;
@@ -725,7 +723,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
                 //return null;
                 //return list;
             }
-
 
             // update lastvalues
             int j = 0;
@@ -786,7 +783,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         String fullSql = String.format("%s %s",
                 sqlPrefixPart,
                 sql.substring(0, sql.length() - 1));
-        logger.info(String.format("[%s] fullSql: %s",
+        logger.debug(String.format("[%s] fullSql: %s",
                 endpoint.getOperationPath(), fullSql));
 
         int rowCount = mod == 0 ? endpoint.getConfiguration().getBatchRowCount() : mod;
@@ -813,7 +810,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     private void processUpdateSQLExchange(String sql) {
 
-
         logger.debug(String.format("[%s] fullSql: %s",
                 endpoint.getOperationPath(), sql));
 
@@ -836,7 +832,6 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         }
 
     }
-
 
     private Object[] getAllItemsIdFromDB() throws Exception {
 

@@ -14,7 +14,7 @@ import org.apache.camel.model.dataformat.JsonLibrary;
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.at_consulting.itsm.event.Event;
+import ru.atc.adapters.type.Event;
 
 import javax.jms.ConnectionFactory;
 import java.io.FileInputStream;
