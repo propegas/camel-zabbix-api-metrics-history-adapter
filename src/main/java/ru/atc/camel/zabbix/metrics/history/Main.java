@@ -23,6 +23,8 @@ import java.io.InputStream;
 import java.util.Objects;
 import java.util.Properties;
 
+import static ru.atc.adapters.message.CamelMessageManager.genHeartbeatMessage;
+
 public final class Main {
 
     private static final int MAX_TOTAL = 20;
@@ -113,131 +115,7 @@ public final class Main {
         logger.info("activemq_port: " + activemq_port);
 
         org.apache.camel.main.Main main = new org.apache.camel.main.Main();
-        main.enableHangupSupport();
-
-        main.addRouteBuilder(new RouteBuilder() {
-
-            @Override
-            public void configure() throws Exception {
-
-                JsonDataFormat myJson = new JsonDataFormat();
-                myJson.setPrettyPrint(true);
-                myJson.setLibrary(JsonLibrary.Jackson);
-                myJson.setJsonView(Event.class);
-                //myJson.setPrettyPrint(true);
-
-                PropertiesComponent properties = new PropertiesComponent();
-                properties.setLocation("classpath:zabbixapi.properties");
-                getContext().addComponent("properties", properties);
-
-                ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
-                        "tcp://" + activemq_ip + ":" + activemq_port
-                );
-                getContext().addComponent("activemq", JmsComponent.jmsComponentAutoAcknowledge(connectionFactory));
-
-                SqlComponent sql = new SqlComponent();
-                BasicDataSource ds = setupDataSource();
-                sql.setDataSource(ds);
-                getContext().addComponent("sql", sql);
-
-                JdbcComponent jdbc = new JdbcComponent();
-                jdbc.setDataSource(ds);
-                getContext().addComponent("jdbc", jdbc);
-
-                getContext().setAllowUseOriginalMessage(false);
-
-                // Heartbeats
-                if ("true".equals(usejms)) {
-                    from("timer://foo?period={{heartbeatsdelay}}")
-                            //.choice()
-                            .process(new Processor() {
-                                public void process(Exchange exchange) throws Exception {
-                                    ZabbixAPIConsumer.genHeartbeatMessage(exchange, source);
-                                }
-                            })
-                            //.bean(WsdlNNMConsumer.class, "genHeartbeatMessage", exchange)
-                            .marshal(myJson)
-                            .to("activemq:{{heartbeatsqueue}}")
-                            .log("*** Heartbeat: ${id}");
-                }
-
-                // get metrics history
-                if ("true".equals(useMainRoute)) {
-                    from(new StringBuilder()
-                            .append("zabbixapi://metricshistory?")
-                            .append("delay={{delay}}&").append("zabbixapiurl={{zabbixapiurl}}&")
-                            .append("username={{username}}&")
-                            .append("password={{password}}&")
-                            .append("adaptername={{adaptername}}&")
-                            .append("zabbixItemKePattern={{zabbixItemKePattern}}&")
-                            .append("source={{source}}&")
-                            .append("batchRowCount={{batchRowCount}}&")
-                            .append("maxDiffTime={{maxDiffTime}}&")
-                            .append("zabbixMaxElementsLimit={{zabbixMaxElementsLimit}}&")
-                            .append("lastpolltime={{lastpolltime}}&")
-                            .append("zabbixItemDescriptionPattern={{zabbixItemDescriptionPattern}}")
-                            .toString())
-
-                            .choice()
-                            .when(header("queueName").isEqualTo("Metrics"))
-
-                            .to("jdbc:BasicDataSource")
-
-                            //.recipientList(simple("sql:insert into ${header.Table} {{sql.insertMetricHistory}}"))
-                            .log(LoggingLevel.DEBUG, "**** Inserted new Batch rows, SQL: ${body} .")
-                            .endChoice()
-                            //.log("*** Metric: ${id} ${header.DeviceId}")
-                            .when(header("queueName").isEqualTo("UpdateLastPoll"))
-                            .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
-                            .otherwise()
-                            .choice()
-                            .when(constant(usejms).isEqualTo("true"))
-                            .marshal(myJson)
-                            .to("activemq:{{eventsqueue}}")
-                            .log(LoggingLevel.ERROR, "*** Error: ${id} ${header.DeviceId}")
-                            .endChoice()
-                            .endChoice()
-                            .end()
-
-                            .log(LoggingLevel.DEBUG, "Sended message: ${id} ");
-                    //.to("activemq:{{devicesqueue}}");
-                }
-
-                // select, summarize and delete all history metrics
-                if ("true".equals(useSummarizeRoute)) {
-                    from(new StringBuilder()
-                            .append("zabbixapi://deletehistory?")
-                            .append("delay={{delete_delay}}&")
-                            .append("adaptername={{adaptername}}&")
-                            .append("source={{source}}&")
-                            .append("dayInPast={{dayInPast}}&")
-                            .append("batchRowCount={{batchRowCount}}")
-                            .toString()
-                    )
-                            .choice()
-                            .when(header("queueName").isEqualTo("Metrics"))
-                            .to("jdbc:BasicDataSource")
-                            .log(LoggingLevel.DEBUG, "**** Inserted new Batch rows, SQL: ${body} .")
-                            .endChoice()
-                            //.log("*** Metric: ${id} ${header.DeviceId}")
-                            .when(header("queueName").isEqualTo("UpdateLastPoll"))
-                            .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
-                            .otherwise()
-                            .choice()
-                            .when(constant(usejms).isEqualTo("true"))
-                            .marshal(myJson)
-                            .to("activemq:{{eventsqueue}}")
-                            .log(LoggingLevel.ERROR, "*** Error: ${id} ${header.DeviceId}")
-                            .endChoice()
-                            .endChoice()
-                            .end()
-
-                            .log(LoggingLevel.DEBUG, "Sended message: ${id} ");
-                }
-
-            }
-        });
-
+        main.addRouteBuilder(new IntegrationRoute());
         main.run();
     }
 
@@ -248,13 +126,11 @@ public final class Main {
 
         BasicDataSource ds = new BasicDataSource();
         ds.setMaxTotal(MAX_TOTAL);
-        //ds.setMax
         ds.setMaxIdle(10);
         ds.setMinIdle(5);
         ds.setSoftMinEvictableIdleTimeMillis(IDLE_TIME_MILLIS);
         ds.setMaxConnLifetimeMillis(maxConnLifetime);
         ds.setLogExpiredConnections(true);
-        //ds.setLogWriter(logger);
         ds.setDefaultAutoCommit(true);
         ds.setEnableAutoCommitOnReturn(true);
         ds.setRemoveAbandonedOnBorrow(true);
@@ -268,6 +144,133 @@ public final class Main {
         ds.setUrl(url);
 
         return ds;
+    }
+
+    private static class IntegrationRoute extends RouteBuilder {
+
+        @Override
+        public void configure() throws Exception {
+
+            JsonDataFormat myJson = new JsonDataFormat();
+            myJson.setPrettyPrint(true);
+            myJson.setLibrary(JsonLibrary.Jackson);
+            myJson.setJsonView(Event.class);
+
+            PropertiesComponent properties = new PropertiesComponent();
+            properties.setLocation("classpath:zabbixapi.properties");
+            getContext().addComponent("properties", properties);
+
+            ConnectionFactory connectionFactory = new ActiveMQConnectionFactory(
+                    "tcp://" + activemq_ip + ":" + activemq_port
+            );
+            getContext().addComponent("activemq", JmsComponent.jmsComponentAutoAcknowledge(connectionFactory));
+
+            SqlComponent sql = new SqlComponent();
+            BasicDataSource ds = setupDataSource();
+            sql.setDataSource(ds);
+            getContext().addComponent("sql", sql);
+
+            JdbcComponent jdbc = new JdbcComponent();
+            jdbc.setDataSource(ds);
+            getContext().addComponent("jdbc", jdbc);
+
+            getContext().setAllowUseOriginalMessage(false);
+
+            // Heartbeats
+            if ("true".equals(usejms)) {
+                from("timer://foo?period={{heartbeatsdelay}}")
+                        .process(new Processor() {
+                            public void process(Exchange exchange) throws Exception {
+                                genHeartbeatMessage(exchange, source);
+                            }
+                        })
+                        .marshal(myJson)
+                        .to("activemq:{{heartbeatsqueue}}")
+                        .log("*** Heartbeat: ${id}");
+            }
+
+            // get metrics history
+            if ("true".equals(useMainRoute)) {
+                from(new StringBuilder()
+                        .append("zabbixapi://metricshistory?")
+                        .append("delay={{delay}}&").append("zabbixapiurl={{zabbixapiurl}}&")
+                        .append("username={{username}}&")
+                        .append("password={{password}}&")
+                        .append("adaptername={{adaptername}}&")
+                        .append("source={{source}}&")
+                        .append("batchRowCount={{batchRowCount}}&")
+                        .append("maxDiffTime={{maxDiffTime}}&")
+                        .append("zabbixMaxElementsLimit={{zabbixMaxElementsLimit}}&")
+                        .append("lastpolltime={{lastpolltime}}&")
+                        .append("zabbixItemDescriptionPattern={{zabbixItemDescriptionPattern}}")
+                        .toString())
+
+                        .choice()
+
+                        .when(header("queueName").isEqualTo("Metrics"))
+                        .to("jdbc:BasicDataSource")
+                        .log(LoggingLevel.DEBUG, logger, "**** Inserted new Batch rows, SQL: ${in.body} .")
+                        .endChoice()
+
+                        .when(header("queueName").isEqualTo("UpdateLastPoll"))
+                        .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
+
+                        .otherwise()
+                        .choice()
+
+                        .when(constant(usejms).isEqualTo("true"))
+                        .marshal(myJson)
+                        .to("activemq:{{errorsqueue}}")
+                        .log(LoggingLevel.ERROR, logger, "*** Error: ${id} ${header.DeviceId}")
+                        .log(LoggingLevel.ERROR, logger, "*** NEW ERROR BODY: ${in.body}")
+
+                        .endChoice()
+                        .endChoice()
+                        .end()
+
+                        .log(LoggingLevel.DEBUG, logger, "Sended message: ${id} ");
+
+            }
+
+            // select, summarize and delete all history metrics
+            if ("true".equals(useSummarizeRoute)) {
+                from(new StringBuilder()
+                        .append("zabbixapi://deletehistory?")
+                        .append("delay={{delete_delay}}&")
+                        .append("adaptername={{adaptername}}&")
+                        .append("source={{source}}&")
+                        .append("dayInPast={{dayInPast}}&")
+                        .append("batchRowCount={{batchRowCount}}")
+                        .toString()
+                )
+                        .choice()
+
+                        .when(header("queueName").isEqualTo("Metrics"))
+                        .to("jdbc:BasicDataSource")
+                        .log(LoggingLevel.DEBUG, logger, "**** Inserted new Batch rows, SQL: ${in.body} .")
+                        .endChoice()
+
+                        .when(header("queueName").isEqualTo("UpdateLastPoll"))
+                        .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
+
+                        .otherwise()
+                        .choice()
+
+                        .when(constant(usejms).isEqualTo("true"))
+                        .marshal(myJson)
+                        .to("activemq:{{errorsqueue}}")
+                        .log(LoggingLevel.ERROR, logger, "*** Error: ${id} ${header.DeviceId}")
+                        .log(LoggingLevel.ERROR, logger, "*** NEW ERROR BODY: ${in.body}")
+
+                        .endChoice()
+                        .endChoice()
+                        .end()
+
+                        .log(LoggingLevel.DEBUG, logger, "Sended message: ${id} ");
+            }
+
+        }
+
     }
 
 }
