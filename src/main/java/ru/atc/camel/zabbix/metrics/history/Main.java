@@ -31,7 +31,8 @@ public final class Main {
     private static final int IDLE_TIME_MILLIS = 300000;
     private static final int ABANDONED_TIMEOUT = 300;
     private static final int MAX_CONN_LIFETIME = 900000;
-    private static final Logger logger = LoggerFactory.getLogger(Main.class);
+    private static final Logger logger = LoggerFactory.getLogger("mainLogger");
+    private static final Logger loggerErrors = LoggerFactory.getLogger("errorsLogger");
     private static String activemq_port;
     private static String activemq_ip;
     private static String sql_ip;
@@ -77,8 +78,8 @@ public final class Main {
             sql_user = prop.getProperty("sql_user");
             sql_password = prop.getProperty("sql_password");
             usejms = prop.getProperty("usejms");
-            activemq_ip = prop.getProperty("activemq_ip");
-            activemq_port = prop.getProperty("activemq_port");
+            activemq_ip = prop.getProperty("activemq.ip");
+            activemq_port = prop.getProperty("activemq.port");
             source = prop.getProperty("source");
             useSummarizeRoute = prop.getProperty("useSummarizeRoute");
             useMainRoute = prop.getProperty("useMainRoute");

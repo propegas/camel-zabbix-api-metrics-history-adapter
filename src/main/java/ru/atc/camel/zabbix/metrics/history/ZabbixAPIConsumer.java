@@ -472,7 +472,7 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
     private String getTillTimeToZabbix(String lastpolltimetozab, long currentTimeStamp) {
         String tilltimeToZabbix = "";
-        // if different between saved and current Zabbix time more than 3 hours
+        // if different between saved and current Zabbix time more than N hours
         int maxDiffTime = endpoint.getConfiguration().getMaxDiffTime();
         logger.info("**** currentTimeStamp: " + currentTimeStamp);
         if (currentTimeStamp - Integer.parseInt(lastpolltimetozab) > maxDiffTime) {
