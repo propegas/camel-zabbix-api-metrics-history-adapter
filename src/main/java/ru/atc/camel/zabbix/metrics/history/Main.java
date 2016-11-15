@@ -41,7 +41,7 @@ public final class Main {
     private static String sql_user;
     private static String sql_password;
     private static String usejms;
-    private static String source;
+    private static String adaptername;
     private static String useSummarizeRoute = "false";
     private static String useMainRoute = "true";
     private static int maxConnLifetime = MAX_CONN_LIFETIME;
@@ -55,22 +55,14 @@ public final class Main {
         logger.info("Starting Custom Apache Camel component example");
         logger.info("Press CTRL+C to terminate the JVM");
 
-        // get Properties from file
-        Properties prop = new Properties();
-        InputStream input = null;
-
         try {
-
+            // get Properties from file
+            Properties prop = new Properties();
+            InputStream input = null;
             input = new FileInputStream("zabbixapi.properties");
 
             // load a properties file
             prop.load(input);
-
-            // get the property value and print it out
-            System.out.println(prop.getProperty("sql_ip"));
-            System.out.println(prop.getProperty("sql_database"));
-            System.out.println(prop.getProperty("sql_user"));
-            System.out.println(prop.getProperty("sql_password"));
 
             sql_ip = prop.getProperty("sql_ip");
             sql_database = prop.getProperty("sql_database");
@@ -80,21 +72,13 @@ public final class Main {
             usejms = prop.getProperty("usejms");
             activemq_ip = prop.getProperty("activemq.ip");
             activemq_port = prop.getProperty("activemq.port");
-            source = prop.getProperty("source");
+            adaptername = prop.getProperty("adaptername");
             useSummarizeRoute = prop.getProperty("useSummarizeRoute");
             useMainRoute = prop.getProperty("useMainRoute");
             maxConnLifetime = Integer.parseInt(prop.getProperty("maxConnLifetime"));
 
         } catch (IOException ex) {
-            ex.printStackTrace();
-        } finally {
-            if (input != null) {
-                try {
-                    input.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
+            logger.error("Error while open and parsing properties file", ex);
         }
 
         if (activemq_port == null || Objects.equals(activemq_port, ""))
@@ -181,13 +165,15 @@ public final class Main {
             if ("true".equals(usejms)) {
                 from("timer://foo?period={{heartbeatsdelay}}")
                         .process(new Processor() {
+                            @Override
                             public void process(Exchange exchange) throws Exception {
-                                genHeartbeatMessage(exchange, source);
+                                genHeartbeatMessage(exchange, adaptername);
                             }
                         })
                         .marshal(myJson)
                         .to("activemq:{{heartbeatsqueue}}")
-                        .log("*** Heartbeat: ${id}");
+                        .log(LoggingLevel.DEBUG, logger, "*** Heartbeat: ${id}")
+                        .log(LoggingLevel.DEBUG, logger, "***HEARTBEAT BODY: ${in.body}");
             }
 
             // get metrics history
@@ -215,6 +201,10 @@ public final class Main {
 
                         .when(header("queueName").isEqualTo("UpdateLastPoll"))
                         .to("sql:update metrics_lastpoll {{sql.UpdateLastPoll}}")
+
+                        .when(header("queueName").isEqualTo("Refresh"))
+                        .to("{{api.metrics.refresh}}")
+                        .log(LoggingLevel.INFO, logger, "**** Send HTTP request to API for correlation context refresh ")
 
                         .otherwise()
                         .choice()

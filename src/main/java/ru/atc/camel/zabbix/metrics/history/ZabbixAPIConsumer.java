@@ -336,9 +336,30 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             return 0;
         } finally {
             closeConnectionsAndDS(zabbixApi);
+
+            // send HTTP-request to correlation API for refresh context
+            processExchangeRefreshApi();
         }
 
         return 1;
+    }
+
+    private void processExchangeRefreshApi() {
+        //logger.info("Create Exchange container for Refresh metrics in correlation API...");
+        Exchange exchange = getEndpoint().createExchange();
+        exchange.getIn().setHeader("queueName", "Refresh");
+
+        try {
+            logger.info("Wait 1 minute before processing refresh...");
+            TimeUnit.MINUTES.sleep(1);
+            logger.info("Create Exchange container for Refresh metrics history in correlation API...");
+            getProcessor().process(exchange);
+            if (exchange.getException() != null) {
+                genErrorMessage("Ошибка при выполнении HTTP-запроса", exchange.getException());
+            }
+        } catch (Exception e) {
+            genErrorMessage("Ошибка при выполнении HTTP-запроса", e);
+        }
     }
 
     private long getAndProcessHistoryItems(List<Map<String, Object>> listFinal, DefaultZabbixApi zabbixApi, String lastpolltimetozab,
