@@ -18,6 +18,7 @@ import ru.atc.monitoring.zabbix.api.DefaultZabbixApi;
 import ru.atc.monitoring.zabbix.api.Request;
 import ru.atc.monitoring.zabbix.api.RequestBuilder;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -680,9 +681,27 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
         for (int i = 0; i < itemsList.size(); i++) {
 
+            logger.debug("**** metricid: " + itemsList.get(i).get("metricid").toString());
+            Object value = itemsList.get(i).get("value");
+            logger.debug("****** Try to parse value: " + value);
+            String s = String.valueOf(value);
+            try {
+                if ("history_float".equals(tablename) && !"null".equals(s)) {
+                    logger.debug("  : " + value);
+                    value = String.format("%.4f", Double.parseDouble(s));
+
+                } else if ("history_int".equals(tablename) && !"null".equals(s)) {
+                    logger.debug("****** 2 Try to parse Int value: " + value);
+                    value = String.format("%f", new BigDecimal(s));
+                }
+            } catch (NumberFormatException e) {
+                logger.error("Ошибка в формате или значении поля: " + value);
+                logger.error("Ошибка в формате или значении поля: " + value, e);
+            }
+
             sql = sql + String.format(" (%s, '%s', '%s'),",
                     itemsList.get(i).get("metricid").toString(),
-                    itemsList.get(i).get("value"),
+                    value,
                     itemsList.get(i).get(ZABBIX_HISTORY_TIMESTAMP));
 
             int mod = (i + 1) % endpoint.getConfiguration().getBatchRowCount();
@@ -737,8 +756,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         try {
 
             con = ds.getConnection();
-            pstmt = con.prepareStatement("SELECT id,itemid FROM metrics WHERE source = ?;");
+            pstmt = con.prepareStatement("SELECT id,itemid FROM metrics WHERE source = ? and enabled = ?;");
             pstmt.setString(1, endpoint.getConfiguration().getSource());
+            pstmt.setBoolean(2, true);
 
             logger.debug("DB query: " + pstmt.toString());
 
