@@ -658,7 +658,9 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
 
             // insert for lastvalue
             int mod = (j + 1) % endpoint.getConfiguration().getBatchRowCount();
-            if (mod == 0 || (j == metricValues.size() - 1)) {
+            logger.debug("**** mod: {}", mod);
+            logger.debug("**** j: {}", j);
+            if (mod == 0 || (j == metricValues.size())) {
 
                 // insert for lastvalue
                 processBatchSQLExchange(sqlLastValuesPrefixPart, sqlLastValues, mod);
@@ -686,13 +688,13 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
             logger.debug("****** Try to parse value: " + value);
             String s = String.valueOf(value);
             try {
-                if ("history_float".equals(tablename) && !"null".equals(s)) {
+                if ("history_float".equals(tablename)) {
                     logger.debug("  : " + value);
                     value = String.format("%.4f", Double.parseDouble(s));
 
-                } else if ("history_int".equals(tablename) && !"null".equals(s)) {
+                } else if ("history_int".equals(tablename)) {
                     logger.debug("****** 2 Try to parse Int value: " + value);
-                    value = String.format("%f", new BigDecimal(s));
+                    value = String.format("%.0f", new BigDecimal(s));
                 }
             } catch (NumberFormatException e) {
                 logger.error("Ошибка в формате или значении поля: " + value);
@@ -756,9 +758,10 @@ public class ZabbixAPIConsumer extends ScheduledPollConsumer {
         try {
 
             con = ds.getConnection();
-            pstmt = con.prepareStatement("SELECT id,itemid FROM metrics WHERE source = ? and enabled = ?;");
+            pstmt = con.prepareStatement("SELECT id,itemid FROM metrics WHERE source = ? and (enabled = ? or key = ?);");
             pstmt.setString(1, endpoint.getConfiguration().getSource());
             pstmt.setBoolean(2, true);
+            pstmt.setString(3, "vmware.ipaddress");
 
             logger.debug("DB query: " + pstmt.toString());
 
